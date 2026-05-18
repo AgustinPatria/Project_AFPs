@@ -1,0 +1,65 @@
+# =====================================================================
+# Secrets — never commit
+# =====================================================================
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
+
+# =====================================================================
+# Internal data / docs (excluded from public repo)
+# =====================================================================
+Codigos_legacy/
+validacion/
+PDFs de reporte actual/
+Excels construccion pdf/
+*.xml
+*.xlsm
+*.xlsx
+CLAUDE.md
+MANUAL_AFP_CL_ALTERNATIVE_ASSETS.md
+PIPELINE_DATA_GAPS.md
+**/CLAUDE.md
+**/AGENTS.md
+
+# =====================================================================
+# Build / dependency artifacts
+# =====================================================================
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+
+# =====================================================================
+# Editor / OS / agent state
+# =====================================================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.claude/
+.agents/
+skills-lock.json
+
+# =====================================================================
+# Dev artifacts
+# =====================================================================
+*.log
+dev.log
+*.png
+sync/recovery/
+
+# Local screenshots / dumps
+UsersaunanueInternship*.png
