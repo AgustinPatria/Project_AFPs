@@ -10,8 +10,10 @@ import {
   Building2,
   Users,
   Briefcase,
+  LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { logout } from '@/app/login/actions';
 
 type NavItem = {
   href: string;
@@ -36,6 +38,7 @@ const NAV: (NavItem & { pdf: PdfSection })[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  if (pathname === '/login') return null;
   return (
     <aside className="w-60 shrink-0 border-r border-border bg-sidebar h-screen sticky top-0 flex flex-col">
       <div className="px-6 pt-6 pb-6">
@@ -111,13 +114,24 @@ export function Sidebar() {
             ⌘ K
           </kbd>
         </div>
-        <div>
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-sidebar-foreground/60">
-            AFP Chile Dashboard
+        <div className="flex items-end justify-between gap-2">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider font-semibold text-sidebar-foreground/60">
+              AFP Chile Dashboard
+            </div>
+            <div className="text-[10px] text-muted-foreground/70 mt-0.5">
+              v0.3 · Nov-25
+            </div>
           </div>
-          <div className="text-[10px] text-muted-foreground/70 mt-0.5">
-            v0.3 · Nov-25
-          </div>
+          <form action={logout}>
+            <button
+              type="submit"
+              title="Sign out"
+              className="text-muted-foreground/60 hover:text-sidebar-foreground transition-colors"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+            </button>
+          </form>
         </div>
       </div>
     </aside>
