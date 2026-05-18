@@ -143,8 +143,8 @@ export function StrategyTimeSeriesChart({
       row[r.fund_short_name] = mode === 'usd' ? r.monto_usd_mm : r.market_share_pct;
     }
     const data = Array.from(byPeriodo.values()).sort((a, b) =>
-      String((a as { periodo: string }).periodo).localeCompare(
-        String((b as { periodo: string }).periodo),
+      String((a as unknown as { periodo: string }).periodo).localeCompare(
+        String((b as unknown as { periodo: string }).periodo),
       ),
     );
     // Order funds by their max value desc so legend ranks them.

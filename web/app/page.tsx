@@ -11,7 +11,7 @@ import {
   getNavByAfpC1,
   getOverview,
 } from '@/lib/queries';
-import { AFPS, type EvolutionPoint, type OverviewRow } from '@/lib/dimensions';
+import type { OverviewRow } from '@/lib/dimensions';
 
 function sumOverview(rows: OverviewRow[]) {
   return rows.reduce(
@@ -112,7 +112,7 @@ export default async function Page({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <NavByAfpC1Chart rows={navByAfpC1} />
+          <NavByAfpC1Chart data={navByAfpC1} />
         </CardContent>
       </Card>
 
@@ -123,7 +123,7 @@ export default async function Page({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <TotalEvolutionChart points={evolution.totals as EvolutionPoint[]} />
+          <TotalEvolutionChart totals={evolution.totals} aums={evolution.aums} />
         </CardContent>
       </Card>
     </main>

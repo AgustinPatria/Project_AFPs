@@ -22,7 +22,8 @@ export function StrategyFamilySelector({
   const params = useSearchParams();
   const [, startTransition] = useTransition();
 
-  function onChange(value: string) {
+  function onChange(value: string | null) {
+    if (!value) return;
     const next = new URLSearchParams(params);
     next.set('family', value);
     next.delete('periodo'); // reset periodo when changing family
