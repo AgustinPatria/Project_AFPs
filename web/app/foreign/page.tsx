@@ -1,3 +1,5 @@
+export const revalidate = 3600;
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TabNav } from '@/components/ui/tab-nav';
 import { Disclaimer } from '@/components/disclaimer';

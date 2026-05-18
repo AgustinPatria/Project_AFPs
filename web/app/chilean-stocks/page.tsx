@@ -1,3 +1,5 @@
+export const revalidate = 3600;
+
 import { ChileanStocksGicsCard } from '@/components/chilean-stocks/chilean-stocks-gics-card';
 import { ChileanStocksTransactionsCard } from '@/components/chilean-stocks/chilean-stocks-transactions-card';
 import { PageHeader } from '@/components/page-header';

@@ -1,3 +1,5 @@
+export const revalidate = 3600;
+
 import { Coins, Divide, Users, Wallet } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Disclaimer } from '@/components/disclaimer';

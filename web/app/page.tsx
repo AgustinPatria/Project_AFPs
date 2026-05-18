@@ -1,3 +1,5 @@
+export const revalidate = 3600;
+
 import { Activity, Hourglass, Layers, Wallet } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { KpiCard } from '@/components/kpi-card';

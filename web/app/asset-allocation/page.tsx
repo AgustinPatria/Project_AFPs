@@ -1,3 +1,5 @@
+export const revalidate = 3600;
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Disclaimer } from '@/components/disclaimer';
 import { PageHeader } from '@/components/page-header';
