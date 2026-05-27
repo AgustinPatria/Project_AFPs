@@ -9,16 +9,19 @@ import type {
 /**
  * Distinct fecha_valor across the asset-class views (one per published period).
  * Returned as YYYY-MM-DD strings, latest first.
+ *
+ * Reads from v_sp_asset_class_dates (DISTINCT fecha_valor over sp_fila cuadro
+ * 1+2). Hitting v_sp_asset_class_afp directly hits PostgREST's server-side
+ * max_rows=1000 cap before our .limit() takes effect: 624 rows/fecha would
+ * silently cut us off after ~1.6 fechas.
  */
 export async function getAssetAllocationDates(): Promise<string[]> {
   const { data, error } = await supabase
-    .from('v_sp_asset_class_afp')
+    .from('v_sp_asset_class_dates')
     .select('fecha_valor')
-    .order('fecha_valor', { ascending: false })
-    // 8 afps * 15 categorias = 120 rows / fecha; 4 months = 480.
-    .limit(2000);
+    .order('fecha_valor', { ascending: false });
   if (error) throw error;
-  return Array.from(new Set((data ?? []).map((r) => r.fecha_valor as string)));
+  return (data ?? []).map((r) => r.fecha_valor as string);
 }
 
 export async function getAssetClassByAfp(

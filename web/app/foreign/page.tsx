@@ -5,7 +5,10 @@ import { TabNav } from '@/components/ui/tab-nav';
 import { Disclaimer } from '@/components/disclaimer';
 import { PageHeader } from '@/components/page-header';
 import { ForeignChangesCard } from '@/components/foreign/foreign-changes-card';
+import { ForeignDirectInvestmentDetail } from '@/components/foreign/foreign-di-detail';
 import { ForeignEvolutionChart } from '@/components/foreign/foreign-evolution-chart';
+import { ForeignEvolutionTabs } from '@/components/foreign/foreign-evolution-tabs';
+import { ForeignLatamCharts } from '@/components/foreign/foreign-latam-charts';
 import { ForeignManagersCard } from '@/components/foreign/foreign-managers-card';
 import { ForeignOverviewTable } from '@/components/foreign/foreign-overview-table';
 import { ForeignTopFlowsCard } from '@/components/foreign/foreign-top-flows-card';
@@ -17,10 +20,16 @@ import {
   getForeignSummary,
   getForeignTopFlows,
 } from '@/lib/queries-foreign';
+import { getForeignDirectInvestmentDetail } from '@/lib/queries-foreign-di';
+import { getAssetClassEvolution } from '@/lib/queries-foreign-evolution';
+import { getLatamEvolution } from '@/lib/queries-foreign-latam';
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'changes', label: 'Changes' },
+  { id: 'evolution', label: 'Evolution' },
+  { id: 'direct', label: 'Direct Inv' },
+  { id: 'latam', label: 'Latam' },
   { id: 'managers', label: 'Managers' },
 ] as const;
 type TabId = (typeof TABS)[number]['id'];
@@ -54,12 +63,16 @@ export default async function Page({
     );
   }
 
-  const [rows, changes, topFlows, managers, evolution] = await Promise.all([
+  const [rows, changes, topFlows, managers, evolution, latam, directInv, fiEvo, eqEvo] = await Promise.all([
     getForeignSummary(fecha),
     getForeignChanges(fecha),
     getForeignTopFlows(fecha),
     getForeignManagers(fecha),
     getForeignEvolution(),
+    getLatamEvolution(),
+    getForeignDirectInvestmentDetail(fecha),
+    getAssetClassEvolution('Fixed Income'),
+    getAssetClassEvolution('Equity'),
   ]);
   const source = dates.find((d) => d.fecha === fecha)?.source ?? 'CHIST';
   const endLabel = `${fmtMonYY(fecha)} USD mm`;
@@ -157,6 +170,19 @@ export default async function Page({
           />
         </>
       )}
+
+      {tab === 'evolution' && (
+        <ForeignEvolutionTabs fiSeries={fiEvo} eqSeries={eqEvo} />
+      )}
+
+      {tab === 'direct' && (
+        <ForeignDirectInvestmentDetail
+          fechas={directInv.fechas}
+          rows={directInv.rows}
+        />
+      )}
+
+      {tab === 'latam' && <ForeignLatamCharts series={latam} />}
 
       {tab === 'managers' && <ForeignManagersCard rows={managers} />}
     </main>

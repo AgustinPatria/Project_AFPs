@@ -101,7 +101,15 @@ export function ForeignChangesCard(props: Props) {
           />
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200/90 leading-relaxed">
+          <strong className="font-medium">Total Change = end − start.</strong>{' '}
+          The PDF report splits this into <em>Return</em> (mark-to-market) +{' '}
+          <em>Flow</em> (net subscriptions) using Bloomberg total-return data
+          per ISIN. Bloomberg returns are not yet synced to the dashboard, so
+          the Return/Flow breakdown is not available here; the column shown is
+          the un-split total (includes FX effect).
+        </div>
         <ForeignChangesTable
           endRows={props.endRows}
           startRows={active.startRows}
