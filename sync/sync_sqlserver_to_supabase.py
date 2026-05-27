@@ -316,12 +316,12 @@ def sync_dim_bd_family(ms_engine, client, args):
 
 
 def sync_dim_bd_family_comp(ms_engine, client, args):
-    print("[dim] dim_bd_family_comp (Moneda + peers)")
+    """Mirror desde AFP_CL_DIM_Family_Comp (115 filas curadas, source of truth
+    desde 2026-05-27). NO de DIM_BD_Family_Comp del equipo IM (23 stale)."""
+    print("[dim] dim_bd_family_comp (Moneda + peers) <- AFP_CL_DIM_Family_Comp")
     query = """
-        SELECT
-            [Family_ID] AS family_id, [ID] AS id, [Tipo] AS tipo,
-            [Fund_Short_Name] AS fund_short_name
-        FROM Inteligencia_Mercado.dbo.DIM_BD_Family_Comp
+        SELECT family_id, id, tipo, fund_short_name
+        FROM Inteligencia_Mercado.dbo.AFP_CL_DIM_Family_Comp
     """
     df = timed_read('dim_bd_family_comp', ms_engine, query)
     n = supabase_upsert(client, 'dim_bd_family_comp', df, ['family_id', 'id'])
@@ -582,6 +582,9 @@ def main():
         sync_dim_bd_region(ms_engine, client, args)
         sync_dim_bd_ac_reg_cat(ms_engine, client, args)
         sync_dim_bd_family(ms_engine, client, args)
+        # Re-habilitado 2026-05-27 tras crear AFP_CL_DIM_Family_Comp con las 115
+        # curadas. Ahora lee de nuestra tabla, no de la del equipo IM (DIM_BD_Family_Comp
+        # sigue stale en 23 pero ya no la usamos).
         sync_dim_bd_family_comp(ms_engine, client, args)
         sync_dim_bd_direct_inv_lics(ms_engine, client, args)
         sync_dim_homol_funds(ms_engine, client, args)

@@ -1,11 +1,10 @@
 """
-Sync XML publico de la SP (cartera_agregada<YYYYMM>.xml) -> Supabase.
+Sync XML publico de la SP (cartera_agregada<YYYYMM>.xml) -> SQL Server.
 
-Cubre la "ventana" de los ultimos 4 meses: la SP publica el agregado mensual
-sin desfase regulatorio, mientras que CHIST llega 4 meses tarde. Mientras un
-mes esta solo en SP, el dashboard lo lee desde estas tablas; cuando CHIST
-llega, asciende a las vistas detalladas y la data SP del mismo mes queda como
-referencia para validacion cruzada.
+Carga en Inteligencia_Mercado.dbo las tablas AFP_CL_SP_Fila, AFP_CL_SP_Valor_Fondo,
+AFP_CL_SP_Valor_AFP, AFP_CL_SP_Valor_Instrumento. SQL Server es source of truth;
+desde alli el sync_sqlserver_to_supabase.py replica una ventana al backend que
+sirve al dashboard.
 
 FLUJO HTTP CONTRA spensiones.cl
 ================================
@@ -15,22 +14,23 @@ FLUJO HTTP CONTRA spensiones.cl
    `param` codificado).
 4. GET ZIP -> bytes.
 5. Extrae el .xml interno del ZIP.
-6. Parsea el XML y carga a Supabase.
+6. Parsea el XML y carga a SQL Server.
 
 ESTRATEGIA DE LOAD
 ==================
-Re-carga idempotente por periodo: DELETE FROM sp_fila WHERE periodo = X
+Re-carga idempotente por periodo: DELETE FROM AFP_CL_SP_Fila WHERE periodo = X
 (las FK con ON DELETE CASCADE limpian las 3 tablas de valores), seguido de
-INSERT por batches via REST API.
+INSERT por batches. Las filas hijas usan el fila_id que el OUTPUT del INSERT
+de cabecera devuelve (mismo orden que el batch enviado).
 
 MODOS DE EJECUCION
 ==================
 
-1) INCREMENTAL (default): re-carga los ultimos 4 meses publicados y BORRA
-   periodos anteriores. Usar --no-prune para conservar backfill historico:
+1) INCREMENTAL (default): re-carga los ultimos 4 meses publicados. NO borra
+   periodos anteriores -- el backfill historico se preserva siempre. Cada
+   periodo procesado se reemplaza (DELETE + INSERT) de forma idempotente:
 
        python sync_sp_xml.py
-       python sync_sp_xml.py --no-prune     # preserva 2025-01..2025-11 backfill
 
 2) PERIODO unico:
 
@@ -48,7 +48,7 @@ MODOS DE EJECUCION
 
 VARIABLES REQUERIDAS EN .env
 ============================
-  SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+  DB_SERVER, DB_DATABASE, DB_UID, DB_PWD
 """
 
 import os
@@ -56,6 +56,7 @@ import re
 import sys
 import io
 import argparse
+import urllib.parse
 import zipfile
 from datetime import datetime, date
 from time import time
@@ -64,7 +65,7 @@ from xml.etree import ElementTree as ET
 
 import requests
 from dotenv import load_dotenv
-from supabase import create_client, Client
+from sqlalchemy import create_engine, text
 
 load_dotenv()
 
@@ -110,13 +111,31 @@ INDEX_OPTION_RE = re.compile(r'value=["\'](\d{4})(\d{2})#')
 # CONEXIONES
 # =============================================================
 
-def connect_supabase() -> Client:
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    if not all([url, key]):
-        raise RuntimeError("Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en .env")
-    print(f"      url={url}")
-    return create_client(url, key)
+def connect_sqlserver():
+    """Engine SQLAlchemy contra Inteligencia_Mercado usando ODBC Driver 18.
+
+    Driver 18 (vs el legacy 'SQL Server'): soporta fast_executemany real, bind
+    nativo de datetime, y NVARCHAR sin sorpresas. Encrypt=optional + Trust SC
+    porque el SQL Server corp no tiene cert TLS valido."""
+    server = os.getenv("DB_SERVER")
+    database = os.getenv("DB_DATABASE")
+    user = os.getenv("DB_UID")
+    pwd = os.getenv("DB_PWD")
+    if not all([server, database, user, pwd]):
+        raise RuntimeError("Faltan DB_SERVER/DB_DATABASE/DB_UID/DB_PWD en .env")
+
+    odbc = (
+        f"DRIVER={{ODBC Driver 18 for SQL Server}};"
+        f"SERVER={server};"
+        f"DATABASE={database};"
+        f"UID={user};"
+        f"PWD={pwd};"
+        f"Encrypt=optional;"
+        f"TrustServerCertificate=yes;"
+    )
+    params = urllib.parse.quote_plus(odbc)
+    print(f"      server={server} database={database} driver=ODBC18")
+    return create_engine(f"mssql+pyodbc:///?odbc_connect={params}")
 
 
 # =============================================================
@@ -408,34 +427,119 @@ def parse_xml(xml_bytes: bytes) -> dict:
 
 
 # =============================================================
-# LOAD A SUPABASE
+# LOAD A SQL SERVER
 # =============================================================
 
-def delete_periodo(client: Client, periodo: str) -> int:
-    """DELETE FROM sp_fila WHERE periodo = X. CASCADE limpia las 3 hijas."""
-    resp = client.table("sp_fila").delete().eq("periodo", periodo).execute()
-    return len(resp.data) if resp.data else 0
+# Columnas en orden fijo. Para AFP_CL_SP_Fila excluimos fila_id (IDENTITY) y
+# created_at (DEFAULT SYSUTCDATETIME()) — el server los rellena solo.
+FILA_COLS = [
+    "periodo", "fecha_valor", "fecha_publicacion",
+    "cuadro", "sub_listado_codigo", "fila_numero", "glosa",
+    "tipo_institucion", "moneda_objeto", "agrupacion",
+    "emisor", "nemotecnico", "tipo_accion",
+    "elegibilidad", "condicion", "unidad_indexada", "es_subtotal",
+]
+VF_COLS = [
+    "fila_id", "tipo_fondo",
+    "monto_dolares", "monto_pesos", "porcentaje",
+    "porcentaje_sobre_emisor", "porcentaje_sobre_extranjero",
+]
+VA_COLS = [
+    "fila_id", "afp_rut", "afp_nombre",
+    "monto_dolares", "porcentaje",
+]
+VI_COLS = [
+    "fila_id", "instrumento_glosa",
+    "porcentaje", "monto_pesos", "monto_dolares",
+]
+
+# Limite de batch para AFP_CL_SP_Fila: SQL Server tope teorico = 2100 parametros
+# por query. Con 17 columnas, 100 filas = 1700 params (margen seguro).
+FILA_BATCH = 100
 
 
-def _insert_batches(client: Client, table: str, rows: list, batch_size: int = 1000) -> int:
+def delete_periodo_sql(cur, periodo: str) -> int:
+    """DELETE FROM AFP_CL_SP_Fila WHERE periodo = X. CASCADE limpia las 3 hijas."""
+    cur.execute("DELETE FROM dbo.AFP_CL_SP_Fila WHERE periodo = ?", periodo)
+    return cur.rowcount or 0
+
+
+def _insert_filas_batch(cur, periodo, fecha_valor, fecha_pub, fila_dicts):
+    """Inserta un batch en AFP_CL_SP_Fila usando un solo statement multi-VALUES
+    con OUTPUT INSERTED.fila_id. Devuelve los IDs en el mismo orden que el
+    batch enviado."""
+    if not fila_dicts:
+        return []
+
+    cols_sql = ", ".join(FILA_COLS)
+    row_placeholder = "(" + ", ".join(["?"] * len(FILA_COLS)) + ")"
+    values_sql = ", ".join([row_placeholder] * len(fila_dicts))
+
+    sql = (
+        f"INSERT INTO dbo.AFP_CL_SP_Fila ({cols_sql}) "
+        f"OUTPUT INSERTED.fila_id "
+        f"VALUES {values_sql}"
+    )
+
+    flat = []
+    for r in fila_dicts:
+        flat.extend([
+            periodo,
+            fecha_valor,
+            fecha_pub,
+            r["cuadro"],
+            r.get("sub_listado_codigo"),
+            r["fila_numero"],
+            r["glosa"],
+            r.get("tipo_institucion"),
+            r.get("moneda_objeto"),
+            r.get("agrupacion"),
+            r.get("emisor"),
+            r.get("nemotecnico"),
+            r.get("tipo_accion"),
+            r.get("elegibilidad"),
+            r.get("condicion"),
+            r.get("unidad_indexada"),
+            1 if r.get("es_subtotal") else 0,
+        ])
+
+    cur.execute(sql, flat)
+    return [row[0] for row in cur.fetchall()]
+
+
+def _executemany_children(cur, table: str, cols: list, rows: list) -> int:
+    """Inserta hijos via executemany. fast_executemany cuando lo soporta el
+    driver — con 'DRIVER={SQL Server}' (no nativo) puede caer al modo normal."""
     if not rows:
         return 0
-    total = 0
-    for i in range(0, len(rows), batch_size):
-        client.table(table).insert(rows[i:i+batch_size]).execute()
-        total += min(batch_size, len(rows) - i)
-    return total
+    sql = (
+        f"INSERT INTO dbo.{table} ({', '.join(cols)}) "
+        f"VALUES ({', '.join(['?'] * len(cols))})"
+    )
+    payload = [tuple(r.get(c) for c in cols) for r in rows]
+    try:
+        cur.fast_executemany = True
+    except AttributeError:
+        pass
+    cur.executemany(sql, payload)
+    return len(payload)
 
 
-def load_periodo(client: Client, parsed: dict, batch_size: int = 500) -> dict:
+def load_periodo(engine, parsed: dict) -> dict:
     """DELETE + INSERT por periodo. Devuelve contadores."""
     periodo = parsed["periodo"]
-    fecha_valor_iso = parsed["fecha_valor"].isoformat()
-    fecha_pub = parsed["fecha_publicacion"]
+    # Driver legacy 'SQL Server' no soporta bind directo de datetime.date.
+    # Pasamos ISO string; SQL Server convierte implicitamente al insertar en DATE.
+    fv = parsed["fecha_valor"]
+    fecha_valor = fv.isoformat() if hasattr(fv, "isoformat") else fv
+    fecha_pub = parsed["fecha_publicacion"]          # string YYYY-MM-DD o None
 
     print(f"      borrando data previa de {periodo}...", flush=True)
-    deleted = delete_periodo(client, periodo)
-    print(f"      ({deleted:,} sp_fila previas borradas; cascade limpia las 3 hijas)")
+    with engine.begin() as conn:
+        cur = conn.connection.cursor()
+        deleted = delete_periodo_sql(cur, periodo)
+        cur.close()
+    print(f"      ({deleted:,} AFP_CL_SP_Fila previas borradas; cascade limpia las 3 hijas)")
 
     rows = parsed["rows"]
     if not rows:
@@ -443,48 +547,39 @@ def load_periodo(client: Client, parsed: dict, batch_size: int = 500) -> dict:
         return {"filas": 0, "valor_fondo": 0, "valor_afp": 0, "valor_instrumento": 0}
 
     n_filas = 0
-    n_vf = 0
-    n_va = 0
-    n_vi = 0
+    n_vf = n_va = n_vi = 0
 
-    # Insert por batches. Trust order: supabase-py preserva el orden del request
-    # en response.data, asi se puede zip() para mapear fila_id -> valores.
-    for i in range(0, len(rows), batch_size):
-        batch = rows[i:i+batch_size]
-        fila_payload = [
-            {
-                "periodo": periodo,
-                "fecha_valor": fecha_valor_iso,
-                "fecha_publicacion": fecha_pub,
-                **r["fila"],
-            }
-            for r in batch
-        ]
-        resp = client.table("sp_fila").insert(fila_payload).execute()
-        inserted = resp.data or []
-        if len(inserted) != len(batch):
-            raise RuntimeError(
-                f"Insert mismatch en sp_fila: enviados {len(batch)}, "
-                f"recibidos {len(inserted)}"
-            )
+    with engine.begin() as conn:
+        cur = conn.connection.cursor()
+        try:
+            for i in range(0, len(rows), FILA_BATCH):
+                batch = rows[i:i+FILA_BATCH]
+                fila_dicts = [r["fila"] for r in batch]
+                ids = _insert_filas_batch(cur, periodo, fecha_valor, fecha_pub, fila_dicts)
+                if len(ids) != len(batch):
+                    raise RuntimeError(
+                        f"Insert mismatch en AFP_CL_SP_Fila: enviados {len(batch)}, "
+                        f"OUTPUT devolvio {len(ids)}"
+                    )
 
-        vf, va, vi = [], [], []
-        for parsed_row, ins in zip(batch, inserted):
-            fila_id = ins["fila_id"]
-            for v in parsed_row["valores_fondo"]:
-                vf.append({"fila_id": fila_id, **v})
-            for v in parsed_row["valores_afp"]:
-                va.append({"fila_id": fila_id, **v})
-            for v in parsed_row["valores_instrumento"]:
-                vi.append({"fila_id": fila_id, **v})
+                vf, va, vi = [], [], []
+                for fid, parsed_row in zip(ids, batch):
+                    for v in parsed_row["valores_fondo"]:
+                        vf.append({"fila_id": fid, **v})
+                    for v in parsed_row["valores_afp"]:
+                        va.append({"fila_id": fid, **v})
+                    for v in parsed_row["valores_instrumento"]:
+                        vi.append({"fila_id": fid, **v})
 
-        n_filas += len(inserted)
-        n_vf += _insert_batches(client, "sp_valor_fondo", vf)
-        n_va += _insert_batches(client, "sp_valor_afp", va)
-        n_vi += _insert_batches(client, "sp_valor_instrumento", vi)
+                n_filas += len(ids)
+                n_vf += _executemany_children(cur, "AFP_CL_SP_Valor_Fondo", VF_COLS, vf)
+                n_va += _executemany_children(cur, "AFP_CL_SP_Valor_AFP", VA_COLS, va)
+                n_vi += _executemany_children(cur, "AFP_CL_SP_Valor_Instrumento", VI_COLS, vi)
+        finally:
+            cur.close()
 
     print(
-        f"      -> {n_filas:,} sp_fila | "
+        f"      -> {n_filas:,} fila | "
         f"{n_vf:,} valor_fondo | {n_va:,} valor_afp | {n_vi:,} valor_instrumento"
     )
     return {
@@ -552,18 +647,23 @@ def resolve_periodos(args, session: requests.Session = None) -> list:
 # RESUMEN
 # =============================================================
 
-def print_summary(client: Client):
-    print("\n--- Resumen tablas SP XML ---")
-    for tbl in ("sp_fila", "sp_valor_fondo", "sp_valor_afp", "sp_valor_instrumento"):
-        resp = client.table(tbl).select("*", count="exact").limit(1).execute()
-        print(f"  {tbl:24s} {resp.count or 0:>10,} filas")
+def print_summary(engine):
+    print("\n--- Resumen tablas AFP_CL_SP_* ---")
+    with engine.connect() as conn:
+        for tbl in (
+            "AFP_CL_SP_Fila",
+            "AFP_CL_SP_Valor_Fondo",
+            "AFP_CL_SP_Valor_AFP",
+            "AFP_CL_SP_Valor_Instrumento",
+        ):
+            n = conn.execute(text(f"SELECT COUNT(*) FROM dbo.{tbl}")).scalar()
+            print(f"  {tbl:32s} {n or 0:>10,} filas")
 
-    # Min/max periodo (distinct count no es trivial via REST por el default limit
-    # de 1000 filas; mostramos rango via dos queries chicas).
-    asc = client.table("sp_fila").select("periodo").order("periodo", desc=False).limit(1).execute()
-    dsc = client.table("sp_fila").select("periodo").order("periodo", desc=True).limit(1).execute()
-    if asc.data and dsc.data:
-        print(f"  rango periodos:  [{asc.data[0]['periodo']} -> {dsc.data[0]['periodo']}]")
+        r = conn.execute(
+            text("SELECT MIN(periodo), MAX(periodo) FROM dbo.AFP_CL_SP_Fila")
+        ).first()
+        if r and r[0]:
+            print(f"  rango periodos:                  [{r[0]} -> {r[1]}]")
 
 
 # =============================================================
@@ -572,7 +672,7 @@ def print_summary(client: Client):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Sync XML cartera_agregada de SP -> Supabase via REST API",
+        description="Sync XML cartera_agregada de SP -> SQL Server (Inteligencia_Mercado.dbo.AFP_CL_SP_*)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -582,16 +682,6 @@ def main():
     parser.add_argument(
         "--xml-file",
         help="Cargar desde archivo .xml local (no descarga). Requiere --periodo.",
-    )
-    parser.add_argument(
-        "--no-prune",
-        action="store_true",
-        help=(
-            "Modo incremental: NO borrar periodos viejos al refrescar la "
-            "ventana. Por defecto incremental borra todo lo anterior al "
-            "oldest del target. Usar este flag cuando hay backfill historico "
-            "que se quiere preservar (ej. /asset-allocation evolution charts)."
-        ),
     )
     args = parser.parse_args()
 
@@ -603,8 +693,8 @@ def main():
     start_time = datetime.now()
     print(f"Inicio: {start_time:%Y-%m-%d %H:%M:%S}")
 
-    print("Conectando a Supabase REST API...")
-    client = connect_supabase()
+    print("Conectando a SQL Server (Inteligencia_Mercado)...")
+    engine = connect_sqlserver()
     print("Conexion OK\n")
 
     session = _new_session() if not args.xml_file else None
@@ -614,20 +704,6 @@ def main():
     print(f"MODO: {'INCREMENTAL (ultimos publicados)' if incremental else 'EXPLICITO'}")
     print(f"Periodos a procesar ({len(periodos)}): {', '.join(periodos)}")
 
-    # En modo incremental: ademas de cargar los N publicados, eliminar de
-    # Supabase cualquier periodo viejo que ya no este en la ventana, asi el
-    # estado refleja exactamente "ultimos 4 publicados".
-    # `--no-prune` salta esta limpieza para preservar backfill historico
-    # (ej. los meses 2025-01..2025-11 cargados para los charts evolutivos
-    # de /asset-allocation).
-    if incremental and not args.no_prune:
-        oldest_target = min(periodos)
-        resp = client.table("sp_fila").delete().lt("periodo", oldest_target).execute()
-        n_drop = len(resp.data) if resp.data else 0
-        if n_drop:
-            print(f"Borrados {n_drop:,} sp_fila con periodo < {oldest_target} (cascade)")
-    elif incremental and args.no_prune:
-        print("Skipping prune (--no-prune): periodos historicos se preservan")
     print()
 
     # En modo incremental skipeamos meses no publicados (defensivo: aunque
@@ -669,12 +745,12 @@ def main():
                     f"!= esperado ({periodo}). Usando el del XML."
                 )
 
-            load_periodo(client, parsed)
+            load_periodo(engine, parsed)
             print(f"      done en {time()-t0:.1f}s\n")
 
         if skipped:
             print(f"Periodos no publicados todavia: {', '.join(skipped)}\n")
-        print_summary(client)
+        print_summary(engine)
     except requests.HTTPError as e:
         print(f"\n[ERROR HTTP] {e}", file=sys.stderr)
         raise

@@ -1,5 +1,5 @@
 """
-Sync "Numero de cotizantes Totales" de SP -> Supabase (tabla cotizantes_afp).
+Sync "Numero de cotizantes Totales" de SP -> SQL Server (Inteligencia_Mercado.dbo.AFP_CL_SP_Cotizantes).
 
 Fuente:
   Superintendencia de Pensiones, Centro de Estadisticas, fila 3 "Numero de
@@ -17,7 +17,9 @@ Fuente:
 ESTRATEGIA DE LOAD
 ==================
 Re-carga idempotente por fecha (ultimo dia del periodo): DELETE FROM
-cotizantes_afp WHERE fecha = X, seguido de INSERT por las 7 AFPs.
+AFP_CL_SP_Cotizantes WHERE fecha = X, seguido de INSERT por las 7 AFPs.
+Historia completa se preserva en SQL Server; la ventana rolling vive en
+Supabase via sync_sqlserver_to_supabase.py.
 
 MODOS DE EJECUCION
 ==================
@@ -38,7 +40,7 @@ MODOS DE EJECUCION
 
 VARIABLES REQUERIDAS EN .env
 ============================
-  SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+  DB_SERVER, DB_DATABASE, DB_UID, DB_PWD
 """
 
 import os
@@ -46,12 +48,13 @@ import re
 import sys
 import argparse
 import calendar
+import urllib.parse
 from datetime import datetime, date
 from time import time
 
 import requests
 from dotenv import load_dotenv
-from supabase import create_client, Client
+from sqlalchemy import create_engine, text
 
 load_dotenv()
 
@@ -101,13 +104,28 @@ ROW_RE = re.compile(
 # CONEXIONES
 # =============================================================
 
-def connect_supabase() -> Client:
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    if not all([url, key]):
-        raise RuntimeError("Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en .env")
-    print(f"      url={url}")
-    return create_client(url, key)
+def connect_sqlserver():
+    """Engine SQLAlchemy contra Inteligencia_Mercado usando ODBC Driver 18.
+    Encrypt=optional + Trust SC porque el server corp no tiene cert TLS valido."""
+    server = os.getenv("DB_SERVER")
+    database = os.getenv("DB_DATABASE")
+    user = os.getenv("DB_UID")
+    pwd = os.getenv("DB_PWD")
+    if not all([server, database, user, pwd]):
+        raise RuntimeError("Faltan DB_SERVER/DB_DATABASE/DB_UID/DB_PWD en .env")
+
+    odbc = (
+        f"DRIVER={{ODBC Driver 18 for SQL Server}};"
+        f"SERVER={server};"
+        f"DATABASE={database};"
+        f"UID={user};"
+        f"PWD={pwd};"
+        f"Encrypt=optional;"
+        f"TrustServerCertificate=yes;"
+    )
+    params = urllib.parse.quote_plus(odbc)
+    print(f"      server={server} database={database} driver=ODBC18")
+    return create_engine(f"mssql+pyodbc:///?odbc_connect={params}")
 
 
 def _new_session() -> requests.Session:
@@ -180,11 +198,13 @@ def end_of_month(periodo: str) -> date:
 
 
 # =============================================================
-# LOAD A SUPABASE
+# LOAD A SQL SERVER
 # =============================================================
 
-def load_periodo(client: Client, periodo: str, parsed_rows: list) -> int:
+def load_periodo(engine, periodo: str, parsed_rows: list) -> int:
     """DELETE WHERE fecha=X, INSERT 7 filas. Devuelve cantidad insertada."""
+    # ISO string para evitar el bind directo de datetime.date que el driver
+    # legacy 'SQL Server' no soporta (HYC00).
     fecha = end_of_month(periodo).isoformat()
 
     if len(parsed_rows) != 7:
@@ -194,14 +214,29 @@ def load_periodo(client: Client, periodo: str, parsed_rows: list) -> int:
         )
 
     print(f"      borrando data previa de fecha={fecha}...", flush=True)
-    client.table("cotizantes_afp").delete().eq("fecha", fecha).execute()
-
-    payload = [{"fecha": fecha, **r} for r in parsed_rows]
-    client.table("cotizantes_afp").insert(payload).execute()
+    with engine.begin() as conn:
+        cur = conn.connection.cursor()
+        try:
+            cur.execute(
+                "DELETE FROM dbo.AFP_CL_SP_Cotizantes WHERE fecha = ?",
+                fecha,
+            )
+            sql = (
+                "INSERT INTO dbo.AFP_CL_SP_Cotizantes (fecha, afp, n_cotizantes) "
+                "VALUES (?, ?, ?)"
+            )
+            payload = [(fecha, r["afp"], r["n_cotizantes"]) for r in parsed_rows]
+            try:
+                cur.fast_executemany = True
+            except AttributeError:
+                pass
+            cur.executemany(sql, payload)
+        finally:
+            cur.close()
 
     total = sum(r["n_cotizantes"] for r in parsed_rows)
     print(f"      -> 7 AFPs insertadas (total cotizantes={total:,})")
-    return len(payload)
+    return len(parsed_rows)
 
 
 # =============================================================
@@ -255,14 +290,16 @@ def resolve_periodos(args, session: requests.Session = None) -> list:
 # RESUMEN
 # =============================================================
 
-def print_summary(client: Client):
-    print("\n--- Resumen tabla cotizantes_afp ---")
-    resp = client.table("cotizantes_afp").select("*", count="exact").limit(1).execute()
-    print(f"  filas totales: {resp.count or 0:,}")
-    asc = client.table("cotizantes_afp").select("fecha").order("fecha", desc=False).limit(1).execute()
-    dsc = client.table("cotizantes_afp").select("fecha").order("fecha", desc=True).limit(1).execute()
-    if asc.data and dsc.data:
-        print(f"  rango fechas:  [{asc.data[0]['fecha']} -> {dsc.data[0]['fecha']}]")
+def print_summary(engine):
+    print("\n--- Resumen tabla AFP_CL_SP_Cotizantes ---")
+    with engine.connect() as conn:
+        n = conn.execute(text("SELECT COUNT(*) FROM dbo.AFP_CL_SP_Cotizantes")).scalar() or 0
+        print(f"  filas totales: {n:,}")
+        r = conn.execute(
+            text("SELECT MIN(fecha), MAX(fecha) FROM dbo.AFP_CL_SP_Cotizantes")
+        ).first()
+        if r and r[0]:
+            print(f"  rango fechas:  [{r[0]} -> {r[1]}]")
 
 
 # =============================================================
@@ -271,7 +308,7 @@ def print_summary(client: Client):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Sync 'Numero de cotizantes Totales' de SP -> Supabase",
+        description="Sync 'Numero de cotizantes Totales' de SP -> SQL Server (dbo.AFP_CL_SP_Cotizantes)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -283,8 +320,8 @@ def main():
     start_time = datetime.now()
     print(f"Inicio: {start_time:%Y-%m-%d %H:%M:%S}")
 
-    print("Conectando a Supabase REST API...")
-    client = connect_supabase()
+    print("Conectando a SQL Server (Inteligencia_Mercado)...")
+    engine = connect_sqlserver()
     print("Conexion OK\n")
 
     session = _new_session()
@@ -293,20 +330,6 @@ def main():
     periodos = resolve_periodos(args, session=session)
     print(f"MODO: {'INCREMENTAL (ultimos publicados)' if incremental else 'EXPLICITO'}")
     print(f"Periodos a procesar ({len(periodos)}): {', '.join(periodos)}")
-
-    # Modo incremental: borrar fechas mas viejas que el oldest target
-    # para mantener la ventana rolling de 4 meses.
-    if incremental:
-        oldest_target = end_of_month(min(periodos)).isoformat()
-        resp = (
-            client.table("cotizantes_afp")
-            .delete()
-            .lt("fecha", oldest_target)
-            .execute()
-        )
-        n_drop = len(resp.data) if resp.data else 0
-        if n_drop:
-            print(f"Borrados {n_drop:,} filas con fecha < {oldest_target} (rolling window)")
     print()
 
     skipped = []
@@ -330,12 +353,12 @@ def main():
                 skipped.append(periodo)
                 continue
 
-            load_periodo(client, periodo, parsed)
+            load_periodo(engine, periodo, parsed)
             print(f"      done en {time()-t0:.1f}s\n")
 
         if skipped:
             print(f"Periodos skipped: {', '.join(skipped)}\n")
-        print_summary(client)
+        print_summary(engine)
     except Exception as e:
         print(f"\n[ERROR] {e}", file=sys.stderr)
         raise
