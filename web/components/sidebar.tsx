@@ -1,7 +1,9 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import {
   BarChart3,
   PieChart,
@@ -12,6 +14,8 @@ import {
   UserCog,
   Briefcase,
   LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { logout } from '@/app/login/actions';
@@ -38,41 +42,96 @@ const NAV: (NavItem & { pdf: PdfSection })[] = [
   { href: '/managers', label: 'Managers', icon: UserCog, ready: true, pdf: '10' },
 ];
 
+const STORAGE_KEY = 'sidebar:collapsed';
+
 export function Sidebar() {
   const pathname = usePathname();
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(STORAGE_KEY) === '1') setCollapsed(true);
+    } catch {}
+  }, []);
+
+  const toggle = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(STORAGE_KEY, next ? '1' : '0');
+      } catch {}
+      return next;
+    });
+  };
+
   if (pathname === '/login') return null;
   return (
-    <aside className="w-60 shrink-0 border-r border-border bg-sidebar h-screen sticky top-0 flex flex-col">
-      <div className="px-6 pt-6 pb-6">
-        <div className="flex items-center gap-2">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand" />
-          <div className="text-xl font-bold tracking-[0.22em] text-sidebar-foreground leading-none">
-            PATRIA
+    <aside
+      className={cn(
+        'shrink-0 border-r border-border bg-sidebar h-screen sticky top-0 flex flex-col transition-[width] duration-200',
+        collapsed ? 'w-16' : 'w-60',
+      )}
+    >
+      <div
+        className={cn(
+          'relative pt-6 pb-6',
+          collapsed ? 'px-2 flex justify-center' : 'px-6',
+        )}
+      >
+        {collapsed ? null : (
+          <div>
+            <Image
+              src="/patria-logo.png"
+              alt="Patria"
+              width={2540}
+              height={1066}
+              priority
+              className="h-20 w-auto -ml-2 -my-4"
+            />
+            <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/80">
+              AFP Chile
+            </div>
           </div>
-        </div>
-        <div className="mt-1.5 ml-3.5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/80">
-          AFP Chile
-        </div>
+        )}
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className={cn(
+            'rounded-md p-1 text-muted-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors',
+            collapsed ? '' : 'absolute top-3 right-3',
+          )}
+        >
+          {collapsed ? (
+            <PanelLeftOpen className="h-4 w-4" />
+          ) : (
+            <PanelLeftClose className="h-4 w-4" />
+          )}
+        </button>
       </div>
-      <nav className="px-3 space-y-0.5">
+      <nav className={cn('space-y-0.5', collapsed ? 'px-2' : 'px-3')}>
         {NAV.map((item) => {
           const isActive =
             item.href === '/' ? pathname === '/' : pathname?.startsWith(item.href);
           const Icon = item.icon;
-          const base =
-            'group flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors';
-          const sectionTag = item.pdf ? (
-            <span
-              className={cn(
-                'ml-auto inline-flex items-center rounded px-1 py-px text-[10px] tabular-nums font-mono tracking-tight shrink-0',
-                isActive
-                  ? 'bg-brand/15 text-brand'
-                  : 'text-muted-foreground/60 group-hover:text-muted-foreground',
-              )}
-            >
-              {item.pdf}
-            </span>
-          ) : null;
+          const base = cn(
+            'group flex items-center rounded-md text-sm font-medium transition-colors',
+            collapsed ? 'justify-center px-2 py-2' : 'gap-2.5 px-3 py-2',
+          );
+          const sectionTag =
+            item.pdf && !collapsed ? (
+              <span
+                className={cn(
+                  'ml-auto inline-flex items-center rounded px-1 py-px text-[10px] tabular-nums font-mono tracking-tight shrink-0',
+                  isActive
+                    ? 'bg-brand/15 text-brand'
+                    : 'text-muted-foreground/60 group-hover:text-muted-foreground',
+                )}
+              >
+                {item.pdf}
+              </span>
+            ) : null;
           if (!item.ready) {
             return (
               <span
@@ -81,13 +140,17 @@ export function Sidebar() {
                   base,
                   'text-muted-foreground/40 cursor-not-allowed select-none',
                 )}
-                title="Coming soon"
+                title={collapsed ? `${item.label} — Coming soon` : 'Coming soon'}
               >
                 <Icon className="h-4 w-4" />
-                {item.label}
-                <span className="ml-auto inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide bg-muted/30 text-muted-foreground/60">
-                  Soon
-                </span>
+                {!collapsed && (
+                  <>
+                    {item.label}
+                    <span className="ml-auto inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide bg-muted/30 text-muted-foreground/60">
+                      Soon
+                    </span>
+                  </>
+                )}
               </span>
             );
           }
@@ -95,6 +158,7 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              title={collapsed ? item.label : undefined}
               className={cn(
                 base,
                 isActive
@@ -103,28 +167,42 @@ export function Sidebar() {
               )}
             >
               <Icon className={cn('h-4 w-4', isActive && 'text-brand')} />
-              {item.label}
+              {!collapsed && item.label}
               {sectionTag}
             </Link>
           );
         })}
       </nav>
-      <div className="mt-auto px-6 py-4 border-t border-sidebar-border space-y-2">
-        <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground/70">
-          <span>Quick search</span>
-          <kbd className="font-mono border border-border rounded px-1 py-px bg-muted/30">
-            ⌘ K
-          </kbd>
-        </div>
-        <div className="flex items-end justify-between gap-2">
-          <div>
-            <div className="text-[10px] uppercase tracking-wider font-semibold text-sidebar-foreground/60">
-              AFP Chile Dashboard
-            </div>
-            <div className="text-[10px] text-muted-foreground/70 mt-0.5">
-              v0.3 · Nov-25
-            </div>
+      <div
+        className={cn(
+          'mt-auto py-4 border-t border-sidebar-border space-y-2',
+          collapsed ? 'px-2' : 'px-6',
+        )}
+      >
+        {!collapsed && (
+          <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground/70">
+            <span>Quick search</span>
+            <kbd className="font-mono border border-border rounded px-1 py-px bg-muted/30">
+              ⌘ K
+            </kbd>
           </div>
+        )}
+        <div
+          className={cn(
+            'flex gap-2',
+            collapsed ? 'justify-center' : 'items-end justify-between',
+          )}
+        >
+          {!collapsed && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider font-semibold text-sidebar-foreground/60">
+                AFP Chile Dashboard
+              </div>
+              <div className="text-[10px] text-muted-foreground/70 mt-0.5">
+                v0.3 · Nov-25
+              </div>
+            </div>
+          )}
           <form action={logout}>
             <button
               type="submit"

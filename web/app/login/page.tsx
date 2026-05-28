@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { login } from './actions';
 
 export default async function LoginPage({
@@ -10,12 +11,14 @@ export default async function LoginPage({
     <main className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center space-y-1.5">
-          <div className="flex items-center justify-center gap-2">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand" />
-            <div className="text-xl font-bold tracking-[0.22em] leading-none">
-              PATRIA
-            </div>
-          </div>
+          <Image
+            src="/patria-logo.png"
+            alt="Patria"
+            width={2540}
+            height={1066}
+            priority
+            className="h-24 w-auto mx-auto -my-4"
+          />
           <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/80">
             AFP Chile Dashboard
           </div>
