@@ -220,20 +220,30 @@ export type ManagerRow = {
   monto_usd_mm: number;
 };
 
+// Manager-name aliases applied at read time so the dashboard groups sub-brands
+// the same way the PDF does. dim_bd_funds keeps the underlying brand intact;
+// only the aggregated view re-labels them.
+const MANAGER_ALIASES: Record<string, string> = {
+  'x-trackers': 'Deutsche',     // DWS ETF brand; PDF Sec 10 reports under Deutsche.
+};
+
 export async function getForeignManagers(fecha: string): Promise<ManagerRow[]> {
   const { data, error } = await supabase
     .from('v_foreign_managers_combined')
     .select('manager,fund_style,asset_class,category,region,monto_usd_mm')
     .eq('fecha_reporte', fecha);
   if (error) throw error;
-  return (data ?? []).map((r) => ({
-    manager: (r.manager as string) ?? 'Unknown',
-    fund_style: (r.fund_style as 'Active' | 'Passive') ?? 'Active',
-    asset_class: (r.asset_class as string | null) ?? null,
-    category: (r.category as string | null) ?? null,
-    region: (r.region as string | null) ?? null,
-    monto_usd_mm: Number(r.monto_usd_mm) || 0,
-  }));
+  return (data ?? []).map((r) => {
+    const rawManager = (r.manager as string) ?? 'Unknown';
+    return {
+      manager: MANAGER_ALIASES[rawManager] ?? rawManager,
+      fund_style: (r.fund_style as 'Active' | 'Passive') ?? 'Active',
+      asset_class: (r.asset_class as string | null) ?? null,
+      category: (r.category as string | null) ?? null,
+      region: (r.region as string | null) ?? null,
+      monto_usd_mm: Number(r.monto_usd_mm) || 0,
+    };
+  });
 }
 
 // ============================================================================

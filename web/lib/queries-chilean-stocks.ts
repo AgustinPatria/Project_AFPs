@@ -94,8 +94,13 @@ export async function getChileanStocksTopFlows(
 }
 
 export async function getChileanStocksDates(): Promise<string[]> {
+  // Source = v_chilean_stocks_gics (CHIST-bound, max ~Nov-25 today). The
+  // by-issuer view goes further (SP XML covers Dec-25..Apr-26) but GICS
+  // classification needs nemo-level data only CHIST has. Picking gics dates
+  // here keeps the default landing fecha aligned with both cards on this
+  // page; users wanting SP XML transactions can still navigate via URL.
   const { data, error } = await supabase
-    .from('v_chilean_stocks_by_issuer_combined')
+    .from('v_chilean_stocks_gics')
     .select('fecha_reporte')
     .order('fecha_reporte', { ascending: false })
     .limit(5000);

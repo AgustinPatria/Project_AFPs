@@ -9,6 +9,7 @@ import {
   Globe,
   Building2,
   Users,
+  UserCog,
   Briefcase,
   LogOut,
 } from 'lucide-react';
@@ -32,8 +33,9 @@ const NAV: (NavItem & { pdf: PdfSection })[] = [
   { href: '/asset-allocation', label: 'Asset Allocation', icon: PieChart, ready: true, pdf: '02·03' },
   { href: '/strategy', label: 'Strategy', icon: Target, ready: true, pdf: '04' },
   { href: '/foreign', label: 'Foreign Investment', icon: Globe, ready: true, pdf: '07' },
-  { href: '/chilean-stocks', label: 'Chilean Stocks', icon: Building2, pdf: '05·06' },
+  { href: '/chilean-stocks', label: 'Chilean Stocks', icon: Building2, ready: true, pdf: '05·06' },
   { href: '/distributors', label: 'Distributors', icon: Users, pdf: '09' },
+  { href: '/managers', label: 'Managers', icon: UserCog, ready: true, pdf: '10' },
 ];
 
 export function Sidebar() {
