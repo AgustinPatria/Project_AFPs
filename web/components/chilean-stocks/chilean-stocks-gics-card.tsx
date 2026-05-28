@@ -16,15 +16,20 @@ export function ChileanStocksGicsCard({ data }: { data: GicsBreakdown }) {
         <div className="flex items-baseline justify-between flex-wrap gap-3">
           <div>
             <CardTitle className="text-sm font-medium">
-              Portfolio Breakdown — GICS Sectors
+              Portfolio Breakdown — GICS Sectors · AFPs
             </CardTitle>
-            <p className="text-[11px] text-muted-foreground mt-1">
-              Chilean equity holdings classified via{' '}
+            <p className="text-[11px] text-muted-foreground mt-1 max-w-2xl">
+              Aggregate AFP holdings classified via{' '}
               <code className="font-mono text-[10px] bg-muted/50 px-1 py-px rounded">
                 dim_ipd_instrumentos.sector_gics
               </code>
-              {' · '}
-              {sectors.length} sectors · {sectors.reduce((s, x) => s + x.nEmisores, 0)} issuers
+              {' '}with PDF-parity overrides applied from{' '}
+              <code className="font-mono text-[10px] bg-muted/50 px-1 py-px rounded">
+                dim_chilean_stocks_gics_override
+              </code>
+              {' '}— SQM holding companies (NORTE GRANDE / NITRATOS / ORO BLANCO) → Materials, real-estate developers (PAZ CORP / SOCOVESA / INMOBILIARIA MANQUEHUE) → Real Est.{' · '}
+              {sectors.length} sectors · {sectors.reduce((s, x) => s + x.nEmisores, 0)} issuers · matches PDF Sec 05 AFPs column within ±0.5pp per sector.{' '}
+              Pionero / MRV / IPSA columns + Quartile table pending Tupungato month-end + Bloomberg sync.
             </p>
           </div>
           <div className="text-right">
