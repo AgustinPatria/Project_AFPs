@@ -44,29 +44,26 @@ export function ChileanStocksTransactionsCard({
   };
   const active = buckets[period];
 
+  const hasData = active.purchases.length > 0 || active.sales.length > 0;
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="space-y-1.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <CardTitle className="text-sm font-medium">
-                Chilean Stocks Transactions ({periodLabels[period]})
-              </CardTitle>
-              <span
-                className="inline-flex items-center rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300"
-                title="Approximation only — see note below"
-              >
-                Approx
-              </span>
-            </div>
-            <p className="text-[11px] text-amber-700 dark:text-amber-400 max-w-2xl">
-              <strong>Does not match PDF.</strong> Values are <code>end − start</code>{' '}
-              of monto USD per issuer, which mixes purchases/sales with price
-              moves. PDF 06 uses CHIST <code>units × price</code> to isolate
-              pure transaction flows; SP XML (the only source for Dec-25 →) does
-              not include units, so this view cannot be reproduced exactly until
-              CHIST publishes the matching fechas.
+            <CardTitle className="text-sm font-medium">
+              Chilean Stocks Transactions ({periodLabels[period]})
+            </CardTitle>
+            <p className="text-[11px] text-muted-foreground max-w-2xl">
+              Pure transaction flows per issuer using CHIST{' '}
+              <code>inv_end − inv_start × (price_end / price_start)</code>{' '}
+              (equivalent to <code>(units_end − units_start) × price_end</code>{' '}
+              but immune to the LATAM units integer-overflow in CHIST). Matches
+              PDF Sec 06 to the dollar on most issuers; two known outliers
+              (CENCOMALLS spin-off, LTM post-Chapter-11 share count) where the
+              legacy applies bespoke handling. Only fechas inside CHIST coverage
+              (≤ Nov-25); for SP XML fechas, units are not published and the
+              card shows no data.
             </p>
           </div>
           <SegmentedControl
@@ -81,36 +78,45 @@ export function ChileanStocksTransactionsCard({
         </div>
       </CardHeader>
       <CardContent>
-        <div className="mb-3 flex items-baseline gap-2 text-xs">
-          <span className="text-muted-foreground uppercase tracking-wide">
-            Total Net (Purchases − Sales)
-          </span>
-          <span
-            className={cn(
-              'font-semibold tabular-nums',
-              active.totalNet > 0
-                ? 'text-emerald-600 dark:text-emerald-400'
-                : active.totalNet < 0
-                  ? 'text-red-600 dark:text-red-400'
-                  : 'text-muted-foreground',
-            )}
-          >
-            {fmtUsdMM(active.totalNet)}
-          </span>
-        </div>
+        {!hasData ? (
+          <p className="text-xs text-muted-foreground">
+            Transaction flows are only computed for fechas inside CHIST coverage
+            (≤ Nov-25). Select an earlier date to see purchases and sales.
+          </p>
+        ) : (
+          <>
+            <div className="mb-3 flex items-baseline gap-2 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">
+                Total Net (Purchases − Sales)
+              </span>
+              <span
+                className={cn(
+                  'font-semibold tabular-nums',
+                  active.totalNet > 0
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : active.totalNet < 0
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-muted-foreground',
+                )}
+              >
+                {fmtUsdMM(active.totalNet)}
+              </span>
+            </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-          <FlowList
-            title="Net Purchases (Top 10)"
-            rows={active.purchases}
-            tone="positive"
-          />
-          <FlowList
-            title="Net Sales (Top 10)"
-            rows={active.sales}
-            tone="negative"
-          />
-        </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+              <FlowList
+                title="Net Purchases (Top 10)"
+                rows={active.purchases}
+                tone="positive"
+              />
+              <FlowList
+                title="Net Sales (Top 10)"
+                rows={active.sales}
+                tone="negative"
+              />
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );

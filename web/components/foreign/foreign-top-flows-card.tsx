@@ -20,6 +20,7 @@ export function ForeignTopFlowsCard({ mom, ytd, momPeriod, ytdPeriod }: Props) {
   const [view, setView] = useState<View>('mom');
   const active = view === 'mom' ? mom : ytd;
   const period = view === 'mom' ? momPeriod : ytdPeriod;
+  const hasData = active.inflows.length > 0 || active.outflows.length > 0;
 
   return (
     <Card>
@@ -30,8 +31,10 @@ export function ForeignTopFlowsCard({ mom, ytd, momPeriod, ytdPeriod }: Props) {
               Top Net Inflows and Outflows — Foreign Funds ({period})
             </CardTitle>
             <p className="text-[11px] text-muted-foreground mt-1">
-              Total USD change per fund. Includes both flow and return effects —
-              not a strict cash-flow figure.
+              Pure transaction flows per fund using CHIST{' '}
+              <code>inv_end − inv_start × (price_end / price_start)</code> (PDF
+              Sec 08 methodology). Only fechas inside CHIST coverage; SP XML
+              fechas do not publish per-fund units.
             </p>
           </div>
           <SegmentedControl
@@ -46,6 +49,12 @@ export function ForeignTopFlowsCard({ mom, ytd, momPeriod, ytdPeriod }: Props) {
         </div>
       </CardHeader>
       <CardContent>
+        {!hasData ? (
+          <p className="text-xs text-muted-foreground">
+            Transaction flows are only computed for fechas inside CHIST coverage
+            (≤ Nov-25). Select an earlier date to see purchases and sales.
+          </p>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
           <FlowList
             title="Net Inflows (Top 10)"
@@ -58,6 +67,7 @@ export function ForeignTopFlowsCard({ mom, ytd, momPeriod, ytdPeriod }: Props) {
             tone="negative"
           />
         </div>
+        )}
       </CardContent>
     </Card>
   );

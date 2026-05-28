@@ -125,20 +125,6 @@ export type ForeignFundRow = {
   monto_usd_mm: number;
 };
 
-async function getForeignByFund(fecha: string): Promise<ForeignFundRow[]> {
-  const { data, error } = await supabase
-    .from('v_foreign_by_fund_combined')
-    .select('fund_id,fondo,manager,monto_usd_mm')
-    .eq('fecha_reporte', fecha);
-  if (error) throw error;
-  return (data ?? []).map((r) => ({
-    fund_id: r.fund_id as string,
-    fondo: r.fondo as string,
-    manager: (r.manager as string | null) ?? null,
-    monto_usd_mm: Number(r.monto_usd_mm) || 0,
-  }));
-}
-
 export type FundDeltaRow = {
   fund_id: string;
   fondo: string;
@@ -146,41 +132,127 @@ export type FundDeltaRow = {
   delta_usd_mm: number;
 };
 
-/**
- * Compute per-fund delta between two fechas, return top N inflows + top N outflows.
- */
-function computeTopFlows(
-  endRows: ForeignFundRow[],
-  startRows: ForeignFundRow[],
-  topN: number,
-): { inflows: FundDeltaRow[]; outflows: FundDeltaRow[] } {
-  const startByFund = new Map(startRows.map((r) => [r.fund_id, r]));
-  const endByFund = new Map(endRows.map((r) => [r.fund_id, r]));
-  const allFunds = new Set([...startByFund.keys(), ...endByFund.keys()]);
-  const deltas: FundDeltaRow[] = [];
-  for (const fid of allFunds) {
-    const e = endByFund.get(fid);
-    const s = startByFund.get(fid);
-    const ref = e ?? s!;
-    deltas.push({
-      fund_id: fid,
-      fondo: ref.fondo,
-      manager: ref.manager,
-      delta_usd_mm: (e?.monto_usd_mm ?? 0) - (s?.monto_usd_mm ?? 0),
-    });
+// PDF Sec 08 methodology — pure transaction flow per fund using
+//   flow_clp_nemo = inv_curr − inv_prev × (price_curr / price_prev)
+// aggregated to fund_id, then converted via end-period FX. Same approach as
+// Chilean Stocks Sec 06 fix; only CHIST fechas (mv_chist_foreign_units_by_nemo).
+type ForeignNemoSnap = {
+  fund_id: string;
+  fondo: string;
+  manager: string | null;
+  nemo: string;
+  inv_clp: number;
+  price_clp: number;
+};
+
+async function getForeignNemoSnapshot(fecha: string): Promise<ForeignNemoSnap[]> {
+  // ~17K rows / fecha so we paginate around the PostgREST 1000-row cap.
+  const out: ForeignNemoSnap[] = [];
+  const PAGE = 1000;
+  let offset = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { data, error } = await supabase
+      .from('mv_chist_foreign_units_by_nemo')
+      .select('fund_id,fondo,manager,nemo,inv_clp,price_clp')
+      .eq('fecha_reporte', fecha)
+      .range(offset, offset + PAGE - 1);
+    if (error) throw error;
+    const batch = (data ?? []) as Array<{
+      fund_id: string;
+      fondo: string;
+      manager: string | null;
+      nemo: string;
+      inv_clp: number | string | null;
+      price_clp: number | string | null;
+    }>;
+    for (const r of batch) {
+      out.push({
+        fund_id: String(r.fund_id),
+        fondo: r.fondo,
+        manager: r.manager ?? null,
+        nemo: r.nemo,
+        inv_clp: Number(r.inv_clp) || 0,
+        price_clp: Number(r.price_clp) || 0,
+      });
+    }
+    if (batch.length < PAGE) break;
+    offset += PAGE;
   }
-  deltas.sort((a, b) => b.delta_usd_mm - a.delta_usd_mm);
-  const inflows = deltas.filter((d) => d.delta_usd_mm > 0).slice(0, topN);
-  const outflows = deltas
-    .filter((d) => d.delta_usd_mm < 0)
-    .slice(-topN)
-    .reverse();
-  return { inflows, outflows };
+  return out;
+}
+
+async function getFxClpPerUsdForeign(fecha: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('tipo_cambio')
+    .select('valor')
+    .eq('fecha', fecha)
+    .eq('instrumento_codigo', 'USDCLP Curncy')
+    .limit(1);
+  if (error) throw error;
+  return Number(data?.[0]?.valor) || 0;
 }
 
 /**
- * Top N inflows and outflows per fund for the MoM and YTD windows ending at `fecha`.
- * Uses Total Change as a proxy for Net Flow (no Return/Flow split available in our data).
+ * Aggregate per-nemo flows up to fund level using
+ *   flow_clp = inv_curr − inv_prev × (price_curr / price_prev)
+ * Returns top N inflows + top N outflows in USD MM.
+ */
+function computeFundFlows(
+  end: ForeignNemoSnap[],
+  start: ForeignNemoSnap[],
+  fxCurr: number,
+  topN: number,
+): { inflows: FundDeltaRow[]; outflows: FundDeltaRow[] } {
+  // Match per-nemo within fund_id.
+  const key = (fund_id: string, nemo: string) => `${fund_id}|${nemo}`;
+  const startByKey = new Map(start.map((s) => [key(s.fund_id, s.nemo), s]));
+  const flowsByFund = new Map<
+    string,
+    { fondo: string; manager: string | null; flow_clp: number }
+  >();
+  const seen = new Set<string>();
+  for (const c of end) {
+    const k = key(c.fund_id, c.nemo);
+    seen.add(k);
+    const p = startByKey.get(k);
+    let flowClp: number;
+    if (!p) {
+      flowClp = c.inv_clp;
+    } else if (!p.price_clp) {
+      flowClp = c.inv_clp - p.inv_clp;
+    } else {
+      flowClp = c.inv_clp - p.inv_clp * (c.price_clp / p.price_clp);
+    }
+    const cur = flowsByFund.get(c.fund_id);
+    if (cur) cur.flow_clp += flowClp;
+    else flowsByFund.set(c.fund_id, { fondo: c.fondo, manager: c.manager, flow_clp: flowClp });
+  }
+  // Positions present at start but not end (closed).
+  for (const p of start) {
+    const k = key(p.fund_id, p.nemo);
+    if (seen.has(k)) continue;
+    const cur = flowsByFund.get(p.fund_id);
+    if (cur) cur.flow_clp -= p.inv_clp;
+    else flowsByFund.set(p.fund_id, { fondo: p.fondo, manager: p.manager, flow_clp: -p.inv_clp });
+  }
+  const fxScale = fxCurr * 1e6;
+  const deltas: FundDeltaRow[] = [];
+  for (const [fund_id, agg] of flowsByFund) {
+    const usd = fxScale > 0 ? agg.flow_clp / fxScale : 0;
+    deltas.push({ fund_id, fondo: agg.fondo, manager: agg.manager, delta_usd_mm: usd });
+  }
+  deltas.sort((a, b) => b.delta_usd_mm - a.delta_usd_mm);
+  return {
+    inflows: deltas.filter((d) => d.delta_usd_mm > 0).slice(0, topN),
+    outflows: deltas.filter((d) => d.delta_usd_mm < 0).slice(-topN).reverse(),
+  };
+}
+
+/**
+ * Top N inflows and outflows per fund for the MoM and YTD windows ending at
+ * `fecha`. Uses the units-based PDF Sec 08 methodology. Returns empty buckets
+ * for fechas outside CHIST coverage (SP XML window).
  */
 export async function getForeignTopFlows(
   fecha: string,
@@ -193,17 +265,19 @@ export async function getForeignTopFlows(
   ytd: { inflows: FundDeltaRow[]; outflows: FundDeltaRow[] };
 }> {
   const { mom, ytd } = priorBaselines(fecha);
-  const [endRows, momStartRows, ytdStartRows] = await Promise.all([
-    getForeignByFund(fecha),
-    getForeignByFund(mom),
-    getForeignByFund(ytd),
+  const [end, momStart, ytdStart, fxCurr] = await Promise.all([
+    getForeignNemoSnapshot(fecha),
+    getForeignNemoSnapshot(mom),
+    getForeignNemoSnapshot(ytd),
+    getFxClpPerUsdForeign(fecha),
   ]);
+  const empty = { inflows: [] as FundDeltaRow[], outflows: [] as FundDeltaRow[] };
   return {
     fechaEnd: fecha,
     fechaMomStart: mom,
     fechaYtdStart: ytd,
-    mom: computeTopFlows(endRows, momStartRows, topN),
-    ytd: computeTopFlows(endRows, ytdStartRows, topN),
+    mom: end.length && momStart.length ? computeFundFlows(end, momStart, fxCurr, topN) : empty,
+    ytd: end.length && ytdStart.length ? computeFundFlows(end, ytdStart, fxCurr, topN) : empty,
   };
 }
 

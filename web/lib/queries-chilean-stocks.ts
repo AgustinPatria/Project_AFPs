@@ -21,32 +21,80 @@ export type ChileanStocksTopFlows = {
   ltm: ChileanFlowsBucket;
 };
 
-async function getByIssuer(fecha: string): Promise<Map<string, number>> {
+// PDF 06 methodology: pure transaction flow per emisor =
+//   flow_clp = inv_curr − inv_prev × (price_curr / price_prev)
+// Mathematically equivalent to (units_end − units_start) × price_end, but
+// works around the LATAM (LTM) `unidades` int32 overflow (−2,147,483,648) in
+// historial_carteras_full by deriving the units delta from inv & price.
+//
+// Data source: mv_chist_chilean_stocks_by_nemo. Only available for CHIST
+// fechas (≤ Nov-25 today). For SP XML fechas the calculation is unavailable —
+// the page must block transactions for those periods.
+type NemoSnapshot = { nemo: string; emisor: string; inv_clp: number; price_clp: number };
+
+async function getNemoSnapshot(fecha: string): Promise<NemoSnapshot[]> {
   const { data, error } = await supabase
-    .from('v_chilean_stocks_by_issuer_combined')
-    .select('emisor,monto_usd_mm')
+    .from('mv_chist_chilean_stocks_by_nemo')
+    .select('nemo,emisor,inv_clp,price_clp')
     .eq('fecha_reporte', fecha);
   if (error) throw error;
-  const out = new Map<string, number>();
-  for (const r of data ?? []) {
-    const e = r.emisor as string;
-    out.set(e, (out.get(e) ?? 0) + (Number(r.monto_usd_mm) || 0));
-  }
-  return out;
+  return (data ?? []).map((r) => ({
+    nemo: r.nemo as string,
+    emisor: r.emisor as string,
+    inv_clp: Number(r.inv_clp) || 0,
+    price_clp: Number(r.price_clp) || 0,
+  }));
 }
 
-function computeFlows(
-  endMap: Map<string, number>,
-  startMap: Map<string, number>,
+async function getFxClpPerUsd(fecha: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('tipo_cambio')
+    .select('valor')
+    .eq('fecha', fecha)
+    .eq('instrumento_codigo', 'USDCLP Curncy')
+    .limit(1);
+  if (error) throw error;
+  return Number(data?.[0]?.valor) || 0;
+}
+
+function computeFlowsUnits(
+  end: NemoSnapshot[],
+  start: NemoSnapshot[],
+  fxCurr: number,
   topN: number,
 ): ChileanFlowsBucket {
-  const allEmisores = new Set([...endMap.keys(), ...startMap.keys()]);
+  const startByNemo = new Map(start.map((s) => [s.nemo, s]));
+  const seen = new Set<string>();
+  const flowsByEmisor = new Map<string, number>();
+  for (const c of end) {
+    seen.add(c.nemo);
+    const p = startByNemo.get(c.nemo);
+    let flowClp: number;
+    if (!p) {
+      // New position: full inv is a purchase at end price.
+      flowClp = c.inv_clp;
+    } else if (!p.price_clp) {
+      // Defensive: fall back to plain delta if start price missing.
+      flowClp = c.inv_clp - p.inv_clp;
+    } else {
+      // flow_clp = inv_curr − inv_prev × (price_curr / price_prev)
+      const priceRatio = c.price_clp / p.price_clp;
+      flowClp = c.inv_clp - p.inv_clp * priceRatio;
+    }
+    flowsByEmisor.set(c.emisor, (flowsByEmisor.get(c.emisor) ?? 0) + flowClp);
+  }
+  // Closed positions: in start but not in end.
+  for (const p of start) {
+    if (seen.has(p.nemo)) continue;
+    flowsByEmisor.set(p.emisor, (flowsByEmisor.get(p.emisor) ?? 0) - p.inv_clp);
+  }
+  const fxScale = fxCurr * 1e6;
   const deltas: ChileanStockIssuerRow[] = [];
   let totalNet = 0;
-  for (const e of allEmisores) {
-    const delta = (endMap.get(e) ?? 0) - (startMap.get(e) ?? 0);
-    deltas.push({ emisor: e, monto_usd_mm: delta });
-    totalNet += delta;
+  for (const [emisor, flowClp] of flowsByEmisor) {
+    const usd = fxScale > 0 ? flowClp / fxScale : 0;
+    deltas.push({ emisor, monto_usd_mm: usd });
+    totalNet += usd;
   }
   deltas.sort((a, b) => b.monto_usd_mm - a.monto_usd_mm);
   return {
@@ -58,12 +106,10 @@ function computeFlows(
 
 /**
  * MTD/YTD/LTM top purchases & sales of chilean stocks (PDF 06).
- *
- * Caveat: deltas are Total Change (end - start), which conflates true cash
- * flows with market-return effects. PDF 06 uses CHIST units × price to compute
- * pure transaction flows; we only have units × price for fechas inside CHIST
- * (≤ Nov-25). For SP XML fechas (Dec-25 onwards) only monto is available, so
- * the rankings reflect both purchases and price moves.
+ * Uses pure transaction-flow methodology (inv − inv_prev × price_ratio).
+ * Only works when `fecha` and the baselines are inside CHIST coverage.
+ * Returns empty buckets if the data isn't available, so the UI can render a
+ * "not available" state instead of misleading numbers.
  */
 export async function getChileanStocksTopFlows(
   fecha: string,
@@ -76,20 +122,23 @@ export async function getChileanStocksTopFlows(
   const ytd = `${y - 1}-12-31`;
   const ltm = lastDayOfMonth(y - 1, m);
 
-  const [endMap, mtdMap, ytdMap, ltmMap] = await Promise.all([
-    getByIssuer(fecha),
-    getByIssuer(mtd),
-    getByIssuer(ytd),
-    getByIssuer(ltm),
+  const [end, mtdSnap, ytdSnap, ltmSnap, fxCurr] = await Promise.all([
+    getNemoSnapshot(fecha),
+    getNemoSnapshot(mtd),
+    getNemoSnapshot(ytd),
+    getNemoSnapshot(ltm),
+    getFxClpPerUsd(fecha),
   ]);
+
+  const empty = (): ChileanFlowsBucket => ({ purchases: [], sales: [], totalNet: 0 });
   return {
     fechaEnd: fecha,
     fechaMtdStart: mtd,
     fechaYtdStart: ytd,
     fechaLtmStart: ltm,
-    mtd: computeFlows(endMap, mtdMap, topN),
-    ytd: computeFlows(endMap, ytdMap, topN),
-    ltm: computeFlows(endMap, ltmMap, topN),
+    mtd: end.length && mtdSnap.length ? computeFlowsUnits(end, mtdSnap, fxCurr, topN) : empty(),
+    ytd: end.length && ytdSnap.length ? computeFlowsUnits(end, ytdSnap, fxCurr, topN) : empty(),
+    ltm: end.length && ltmSnap.length ? computeFlowsUnits(end, ltmSnap, fxCurr, topN) : empty(),
   };
 }
 
