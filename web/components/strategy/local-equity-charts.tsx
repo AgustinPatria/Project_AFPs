@@ -118,70 +118,72 @@ export function LocalEquityAreaChart({ history }: { history: LocalEquityPoint[] 
   );
 }
 
-export function LocalEquityTable({ rows }: { rows: LocalEquityPoint[] }) {
-  const [mode, setMode] = useState<Mode>('clp');
+function SingleLocalEquityTable({
+  rows,
+  mode,
+}: {
+  rows: LocalEquityPoint[];
+  mode: Mode;
+}) {
+  const fmtClp = (n: number) =>
+    n.toLocaleString('en-US', { maximumFractionDigits: 0 });
   return (
-    <>
-      <div className="flex justify-end mb-2">
-        <SegmentedControl
-          ariaLabel="Unit"
-          value={mode}
-          onChange={setMode}
-          options={[
-            { value: 'clp' as const, label: 'CLP bn' },
-            { value: 'pct' as const, label: '%' },
-          ]}
-        />
-      </div>
-      <table className="w-full text-xs">
-        <thead className="border-b border-border">
-          <tr>
-            <th className="text-left py-2 font-medium text-muted-foreground">
-              Local Equity {mode === 'clp' ? '(CLP bn)' : '(%)'}
+    <table className="w-full text-xs">
+      <thead className="border-b border-border">
+        <tr>
+          <th className="text-left py-2 font-medium text-muted-foreground">
+            Local Equity {mode === 'clp' ? '(CLP bn)' : '(%)'}
+          </th>
+          {rows.map((r) => (
+            <th
+              key={r.fecha_reporte}
+              className="text-right py-2 font-medium text-muted-foreground"
+            >
+              {fmtMonth(r.fecha_reporte)}
             </th>
-            {rows.map((r) => (
-              <th
-                key={r.fecha_reporte}
-                className="text-right py-2 font-medium text-muted-foreground"
-              >
-                {fmtMonth(r.fecha_reporte)}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          <tr className="border-b border-border/40">
-            <td className="py-1.5">Direct Investment</td>
-            {rows.map((r) => (
-              <td key={r.fecha_reporte} className="text-right py-1.5 tabular-nums">
-                {mode === 'clp'
-                  ? r.direct_clp_bn.toLocaleString('en-US', { maximumFractionDigits: 0 })
-                  : fmtPct((r.direct_clp_bn / r.total_clp_bn) * 100)}
-              </td>
-            ))}
-          </tr>
-          <tr className="border-b border-border/40">
-            <td className="py-1.5">Investment Funds</td>
-            {rows.map((r) => (
-              <td key={r.fecha_reporte} className="text-right py-1.5 tabular-nums">
-                {mode === 'clp'
-                  ? r.funds_clp_bn.toLocaleString('en-US', { maximumFractionDigits: 0 })
-                  : fmtPct((r.funds_clp_bn / r.total_clp_bn) * 100)}
-              </td>
-            ))}
-          </tr>
-          <tr className="border-t-2 border-t-brand/60 bg-muted/40 font-semibold">
-            <td className="py-1.5">TOTAL</td>
-            {rows.map((r) => (
-              <td key={r.fecha_reporte} className="text-right py-1.5 tabular-nums">
-                {mode === 'clp'
-                  ? r.total_clp_bn.toLocaleString('en-US', { maximumFractionDigits: 0 })
-                  : '100.0%'}
-              </td>
-            ))}
-          </tr>
-        </tbody>
-      </table>
-    </>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        <tr className="border-b border-border/40">
+          <td className="py-1.5">Direct Investment</td>
+          {rows.map((r) => (
+            <td key={r.fecha_reporte} className="text-right py-1.5 tabular-nums">
+              {mode === 'clp'
+                ? fmtClp(r.direct_clp_bn)
+                : fmtPct((r.direct_clp_bn / r.total_clp_bn) * 100)}
+            </td>
+          ))}
+        </tr>
+        <tr className="border-b border-border/40">
+          <td className="py-1.5">Investment Funds</td>
+          {rows.map((r) => (
+            <td key={r.fecha_reporte} className="text-right py-1.5 tabular-nums">
+              {mode === 'clp'
+                ? fmtClp(r.funds_clp_bn)
+                : fmtPct((r.funds_clp_bn / r.total_clp_bn) * 100)}
+            </td>
+          ))}
+        </tr>
+        <tr className="border-t-2 border-t-brand/60 bg-muted/40 font-semibold">
+          <td className="py-1.5">TOTAL</td>
+          {rows.map((r) => (
+            <td key={r.fecha_reporte} className="text-right py-1.5 tabular-nums">
+              {mode === 'clp' ? fmtClp(r.total_clp_bn) : '100.0%'}
+            </td>
+          ))}
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+export function LocalEquityTable({ rows }: { rows: LocalEquityPoint[] }) {
+  // Matches PDF Sec 04 page 2 layout: CLP bn and % stacked, both always visible.
+  return (
+    <div className="space-y-5">
+      <SingleLocalEquityTable rows={rows} mode="clp" />
+      <SingleLocalEquityTable rows={rows} mode="pct" />
+    </div>
   );
 }
