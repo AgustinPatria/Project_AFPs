@@ -17,8 +17,9 @@ import type {
  */
 export async function getAssetAllocationDates(): Promise<string[]> {
   const { data, error } = await supabase
-    .from('v_sp_asset_class_dates')
+    .from('v_asset_class_dates_sd')
     .select('fecha_valor')
+    .gte('fecha_valor', '2025-01-01')
     .order('fecha_valor', { ascending: false });
   if (error) throw error;
   return (data ?? []).map((r) => r.fecha_valor as string);
@@ -30,7 +31,7 @@ export async function getAssetClassByAfp(
   // The view is afp × tipo_fondo × category. For Sec 02 cut by AFP we want
   // the all-funds (tipo_fondo='TOTAL') aggregate per AFP.
   const { data, error } = await supabase
-    .from('v_sp_asset_class_afp')
+    .from('v_asset_class_afp_sd')
     .select('afp_nombre,pdf_category,pdf_order,monto_dolares,porcentaje')
     .eq('fecha_valor', fecha)
     .eq('tipo_fondo', 'TOTAL');
@@ -50,7 +51,7 @@ export async function getAssetClassByTipo(
   fecha: string,
 ): Promise<AssetClassByTipoRow[]> {
   const { data, error } = await supabase
-    .from('v_sp_asset_class_tipo')
+    .from('v_asset_class_tipo_sd')
     .select('tipo_fondo,pdf_category,pdf_order,monto_dolares,porcentaje')
     .eq('fecha_valor', fecha);
   if (error) throw error;
@@ -69,7 +70,7 @@ export async function getAssetClassByTipo(
  */
 export async function getLocalFiByAfp(fecha: string): Promise<LocalFiRow[]> {
   const { data, error } = await supabase
-    .from('v_local_fi_by_afp')
+    .from('v_local_fi_by_afp_sd')
     .select('afp,fecha_reporte,pdf_bucket,pdf_order,monto_usd_mm')
     .eq('fecha_reporte', fecha);
   if (error) throw error;
@@ -98,7 +99,7 @@ export async function getAssetClassEvolution(): Promise<
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const { data, error } = await supabase
-      .from('v_sp_asset_class_tipo')
+      .from('v_asset_class_tipo_sd')
       .select('fecha_valor,tipo_fondo,pdf_category,pdf_order,monto_dolares')
       .order('fecha_valor', { ascending: true })
       .order('pdf_order', { ascending: true })

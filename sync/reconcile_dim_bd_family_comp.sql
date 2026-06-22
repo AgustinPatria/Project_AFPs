@@ -1,0 +1,142 @@
+-- reconcile_dim_bd_family_comp.sql
+-- Reconciliacion de DIM_BD_Family_Comp (universo de peers, sec 04 Strategy).
+-- Generado 2026-05-22.
+--
+-- Contexto: la tabla vivia en 3 copias desincronizadas:
+--   SQL Server  DIM_BD_Family_Comp ...  23 filas  (stale, solo familias 1-4)
+--   Supabase    dim_bd_family_comp ...  115 filas (master de facto, familias 1-10 y 12)
+--   Excel 21_IM/BD ..................  166 filas (OTRO reporte 'Inteligencia de Mercado',
+--                                       taxonomia de familias distinta -> fuera de scope)
+-- Master correcto = las 115 de Supabase. En los 2 conflictos (fondos 849 y 1017) la
+-- asignacion de Supabase coincide con dim_bd_funds.category; la de SQL estaba mal.
+-- Este script reemplaza DIM_BD_Family_Comp con las 115 filas reconciliadas, para que el
+-- sync SQL Server -> Supabase deje de ser un downgrade.
+--
+-- REVISAR antes de ejecutar. Va dentro de una transaccion explicita.
+
+BEGIN TRANSACTION;
+
+DELETE FROM Inteligencia_Mercado.dbo.DIM_BD_Family_Comp;
+
+INSERT INTO Inteligencia_Mercado.dbo.DIM_BD_Family_Comp (Family_ID, ID, Tipo, Fund_Short_Name) VALUES
+(1, 139, 'Peer Group', 'BCI Latam Corp Credit'),
+(1, 389, 'Peer Group', 'LV Latam HY'),
+(1, 434, 'Peer Group', 'Pareturn Sec. Latam Corp Debt'),
+(1, 471, 'Peer Group', 'Santander Latam Corp Debt'),
+(1, 784, 'Peer Group', 'Credicorp Latam Corp Debt'),
+(1, 1695, 'Moneda', 'MDLAT'),
+(1, 1731, 'Peer Group', 'Compass Latam HY USD'),
+(1, 4077, 'Moneda', 'MLATHY'),
+(2, 134, 'Peer Group', 'Barings EM LC'),
+(2, 231, 'Peer Group', 'GAM EM LC'),
+(2, 529, 'Peer Group', 'VanEck JPM EM LC ETF'),
+(2, 720, 'Peer Group', 'Amundi Pioneer EM LC'),
+(2, 745, 'Peer Group', 'BlackRock EM LC Bond'),
+(2, 834, 'Peer Group', 'Goldman Sachs EM LC'),
+(2, 978, 'Peer Group', 'PIMCO EM LC'),
+(2, 1163, 'Peer Group', 'Ashmore EM LC'),
+(2, 1222, 'Peer Group', 'Bradesco Brazilian FI'),
+(2, 1383, 'Peer Group', 'Invesco EM LC'),
+(2, 1447, 'Peer Group', 'JPMorgan EM LC Debt'),
+(2, 1523, 'Peer Group', 'Neuberger Berman EM LC'),
+(2, 1533, 'Peer Group', 'Ninety One EM LC'),
+(2, 1566, 'Peer Group', 'Pictet EM LC'),
+(2, 1714, 'Moneda', 'MLDL'),
+(2, 3313, 'Peer Group', 'iShares JPM EM LC ETF'),
+(2, 3989, 'Peer Group', 'Vontobel EM LC'),
+(2, 4043, 'Peer Group', 'LV Gavekal Latam LC Debt'),
+(2, 4922, 'Peer Group', 'Morgan Stanley EM LC'),
+(3, 141, 'Peer Group', 'BCI Latam Equity'),
+(3, 197, 'Peer Group', 'DWS Latam Equities'),
+(3, 275, 'Peer Group', 'iShares Latam 40 ETF'),
+(3, 287, 'Peer Group', 'iShares MSCI Latam Equity ETF'),
+(3, 363, 'Peer Group', 'JPMorgan Latam Equity'),
+(3, 390, 'Peer Group', 'LarrainVial Latam Equity'),
+(3, 480, 'Peer Group', 'Schroder Latam Equity'),
+(3, 782, 'Peer Group', 'Credicorp Latam Equity'),
+(3, 961, 'Peer Group', 'Ninety One Latam Equity'),
+(3, 1314, 'Peer Group', 'Fidelity Latam Equity'),
+(3, 1501, 'Moneda', 'MLE'),
+(3, 3942, 'Peer Group', 'BTG Pactual Latam Equity'),
+(4, 1222, 'Peer Group', 'Bradesco Brazilian FI'),
+(4, 1572, 'Peer Group', 'Pictet Latam LC'),
+(4, 1714, 'Moneda', 'MLDL'),
+(4, 4043, 'Peer Group', 'LV Gavekal Latam LC Debt'),
+(5, 425, 'Peer Group', 'Ninety One SC Latam'),
+(5, 797, 'Peer Group', 'Euroamerica SC Latam'),
+(5, 870, 'Peer Group', 'iShares MSCI Brazil SC ETF'),
+(5, 1017, 'Peer Group', 'LV SC & MC Latam'),
+(5, 1502, 'Moneda', 'MSC'),
+(5, 2347, 'Peer Group', 'Euroamerica SC Latam'),
+(6, 334, 'Peer Group', 'FM Itau Latam Corp Bond'),
+(6, 410, 'Moneda', 'Moneda Latam Corp Credit'),
+(6, 784, 'Peer Group', 'Credicorp Latam Corp Debt'),
+(6, 786, 'Peer Group', 'Credicorp Latam IG'),
+(6, 849, 'Peer Group', 'Ninety One Latam Corp Debt'),
+(6, 1237, 'Peer Group', 'Credit Suisse Latam Corp Bond'),
+(6, 2315, 'Moneda', 'Moneda Latam Corp Credit'),
+(7, 50, 'Peer Group', 'AB Short Dur. High Yield'),
+(7, 222, 'Peer Group', 'Franklin Templeton HY'),
+(7, 344, 'Peer Group', 'Janus Hend. Global HY'),
+(7, 359, 'Peer Group', 'JPM Global HY'),
+(7, 452, 'Peer Group', 'Robeco HY'),
+(7, 832, 'Peer Group', 'GSachs Global HY'),
+(7, 964, 'Peer Group', 'Oaktree Global Credit'),
+(7, 1336, 'Peer Group', 'Man Funds HY Opport.'),
+(7, 1478, 'Peer Group', 'LG Global HY'),
+(7, 2032, 'Peer Group', 'FI Security Debt Opp.'),
+(7, 3987, 'Peer Group', 'Aegon HY Global'),
+(7, 3993, 'Peer Group', 'Candriam Bonds Global HY'),
+(7, 4906, 'Peer Group', 'Acadian Global HY'),
+(7, 4920, 'Peer Group', 'Lord Abbett Global HY'),
+(8, 62, 'Peer Group', 'Amundi Pio. US HY'),
+(8, 68, 'Peer Group', 'AXA US HY'),
+(8, 70, 'Peer Group', 'AXA US Dynamic HY'),
+(8, 272, 'Peer Group', 'iShares iBoxx $ HY ETF'),
+(8, 397, 'Peer Group', 'Lord Abbett HY'),
+(8, 429, 'Peer Group', 'Nomura US HY'),
+(8, 736, 'Peer Group', 'AXA US Short Dur. HY'),
+(8, 1340, 'Peer Group', 'Man Numeric US HY'),
+(9, 949, 'Peer Group', 'Neuberger Berman CLO Income'),
+(9, 4380, 'Moneda', 'Moneda Carlyle CLO Debt'),
+(10, 50, 'Peer Group', 'AB Short Dur. High Yield'),
+(10, 62, 'Peer Group', 'Amundi Pio. US HY'),
+(10, 70, 'Peer Group', 'AXA US Dynamic HY'),
+(10, 139, 'Peer Group', 'BCI Latam Corp Credit'),
+(10, 222, 'Peer Group', 'Franklin Templeton HY'),
+(10, 272, 'Peer Group', 'iShares iBoxx $ HY ETF'),
+(10, 344, 'Peer Group', 'Janus Hend. Global HY'),
+(10, 359, 'Peer Group', 'JPM Global HY'),
+(10, 397, 'Peer Group', 'Lord Abbett HY'),
+(10, 429, 'Peer Group', 'Nomura US HY'),
+(10, 434, 'Peer Group', 'Pareturn Sec. Latam Corp Debt'),
+(10, 452, 'Peer Group', 'Robeco HY'),
+(10, 471, 'Peer Group', 'Santander Latam Corp Debt'),
+(10, 736, 'Peer Group', 'AXA US Short Dur. HY'),
+(10, 784, 'Peer Group', 'Credicorp Latam Corp Debt'),
+(10, 832, 'Peer Group', 'GSachs Global HY'),
+(10, 964, 'Peer Group', 'Oaktree Global Credit'),
+(10, 1336, 'Peer Group', 'Man Funds HY Opport.'),
+(10, 1340, 'Peer Group', 'Man Numeric US HY'),
+(10, 1695, 'Moneda', 'MDLAT'),
+(10, 1731, 'Peer Group', 'Compass Latam HY USD'),
+(10, 3987, 'Peer Group', 'Aegon HY Global'),
+(10, 3993, 'Peer Group', 'Candriam Bonds Global HY'),
+(10, 4077, 'Moneda', 'MLATHY'),
+(10, 4906, 'Peer Group', 'Acadian Global HY'),
+(10, 4920, 'Peer Group', 'Lord Abbett Global HY'),
+(12, 142, 'Peer Group', 'BCI SC Chile'),
+(12, 378, 'Peer Group', 'LarrainVial SC Chile'),
+(12, 1685, 'Peer Group', 'Pionero'),
+(12, 1687, 'Peer Group', 'Siglo XXI'),
+(12, 1689, 'Peer Group', 'BTG SC Chile'),
+(12, 1690, 'Peer Group', 'Chile FI SC'),
+(12, 1692, 'Peer Group', 'Compass SC'),
+(12, 1724, 'Peer Group', 'BTG SC Chile'),
+(12, 1728, 'Peer Group', 'Toesca SC Chile');
+-- Verificacion: debe devolver 115
+SELECT COUNT(*) AS filas FROM Inteligencia_Mercado.dbo.DIM_BD_Family_Comp;
+
+-- Si filas = 115 y el contenido se ve correcto:
+COMMIT TRANSACTION;
+-- Si algo esta mal, en lugar del COMMIT ejecutar:  ROLLBACK TRANSACTION;

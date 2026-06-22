@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Disclaimer } from '@/components/disclaimer';
 import { KpiCard } from '@/components/kpi-card';
 import { PageHeader } from '@/components/page-header';
+import { AsOfBadge } from '@/components/as-of-badge';
 import { AumTable } from '@/components/market-share/aum-table';
 import { ContributorsSection } from '@/components/market-share/contributors-section';
 import { ReturnsTable } from '@/components/market-share/returns-table';
@@ -88,7 +89,9 @@ export default async function Page({
         subtitle="AFP Chile · system view at month-end"
         dates={dates}
         currentDate={fecha}
-      />
+      >
+        <AsOfBadge module="market_share" />
+      </PageHeader>
 
       <section className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <KpiCard

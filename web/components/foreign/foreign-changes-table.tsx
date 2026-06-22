@@ -23,19 +23,38 @@ type Props = {
   startRows: ForeignSummaryRow[];
   startLabel: string; // e.g. "Dec-25 USD mm"
   endLabel: string;   // e.g. "Mar-26 USD mm"
+  // Return/Flow split over the window (PDF Sec 07 methodology). Empty arrays
+  // mean the split is unavailable for this window — cells render as "—".
+  returnRows: ForeignSummaryRow[];
+  flowRows: ForeignSummaryRow[];
+  splitAvailable: boolean;
 };
 
 type ChangeRow = DisplayRow & {
   start: number;
   end: number;
   change: number;
+  ret: number;
+  flow: number;
 };
+
+// The split methodology (and the PDF) excludes Direct Investment, so for these
+// rows Return + Flow would not reconcile against Total Change — show "—".
+const NO_SPLIT_KEYS = new Set([
+  'grand-total',
+  'bucket-Direct Investment',
+  'bucket-Unknown',
+  'bucket-Other',
+]);
 
 export function ForeignChangesTable({
   endRows,
   startRows,
   startLabel,
   endLabel,
+  returnRows,
+  flowRows,
+  splitAvailable,
 }: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -49,12 +68,25 @@ export function ForeignChangesTable({
     const endByKey = new Map(
       buildPdfTree(endRows).map((r) => [r.key, r.usd]),
     );
+    const retByKey = new Map(
+      buildPdfTree(returnRows).map((r) => [r.key, r.usd]),
+    );
+    const flowByKey = new Map(
+      buildPdfTree(flowRows).map((r) => [r.key, r.usd]),
+    );
     return base.map((r) => {
       const start = startByKey.get(r.key) ?? 0;
       const end = endByKey.get(r.key) ?? 0;
-      return { ...r, start, end, change: end - start };
+      return {
+        ...r,
+        start,
+        end,
+        change: end - start,
+        ret: retByKey.get(r.key) ?? 0,
+        flow: flowByKey.get(r.key) ?? 0,
+      };
     });
-  }, [endRows, startRows]);
+  }, [endRows, startRows, returnRows, flowRows]);
 
   const { parentsByKey, hasChildrenByKey } = useMemo(() => {
     const parents = new Map<string, string[]>();
@@ -142,6 +174,8 @@ export function ForeignChangesTable({
           <TableRow>
             <TableHead>Bucket / Region / Category</TableHead>
             <TableHead className="text-right">{startLabel}</TableHead>
+            <TableHead className="text-right">Return</TableHead>
+            <TableHead className="text-right">Flows</TableHead>
             <TableHead className="text-right">Total Change</TableHead>
             <TableHead className="text-right">{endLabel}</TableHead>
           </TableRow>
@@ -181,6 +215,25 @@ export function ForeignChangesTable({
               <TableCell className="text-right tabular-nums">
                 {r.start === 0 ? '—' : fmtUsdMM(r.start)}
               </TableCell>
+              {splitAvailable && !NO_SPLIT_KEYS.has(r.key) ? (
+                <>
+                  <TableCell
+                    className={cn('text-right tabular-nums', changeClass(r.ret))}
+                  >
+                    {fmtChange(r.ret)}
+                  </TableCell>
+                  <TableCell
+                    className={cn('text-right tabular-nums', changeClass(r.flow))}
+                  >
+                    {fmtChange(r.flow)}
+                  </TableCell>
+                </>
+              ) : (
+                <>
+                  <TableCell className="text-right text-muted-foreground">—</TableCell>
+                  <TableCell className="text-right text-muted-foreground">—</TableCell>
+                </>
+              )}
               <TableCell
                 className={cn(
                   'text-right tabular-nums',

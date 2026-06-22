@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TabNav } from '@/components/ui/tab-nav';
 import { Disclaimer } from '@/components/disclaimer';
 import { PageHeader } from '@/components/page-header';
+import { AsOfBadge } from '@/components/as-of-badge';
 import { ForeignChangesCard } from '@/components/foreign/foreign-changes-card';
 import { ForeignDirectInvestmentDetail } from '@/components/foreign/foreign-di-detail';
 import { ForeignEvolutionChart } from '@/components/foreign/foreign-evolution-chart';
@@ -11,9 +12,12 @@ import { ForeignEvolutionTabs } from '@/components/foreign/foreign-evolution-tab
 import { ForeignLatamCharts } from '@/components/foreign/foreign-latam-charts';
 import { ForeignManagersCard } from '@/components/foreign/foreign-managers-card';
 import { ForeignOverviewTable } from '@/components/foreign/foreign-overview-table';
+import { ForeignTaxonomyToggle } from '@/components/foreign/foreign-taxonomy-toggle';
 import { ForeignTopFlowsCard } from '@/components/foreign/foreign-top-flows-card';
+import type { ForeignTaxonomy } from '@/lib/types-foreign';
 import {
   getForeignChanges,
+  getForeignChangesSplits,
   getForeignDates,
   getForeignEvolution,
   getForeignManagers,
@@ -44,9 +48,9 @@ function fmtMonYY(fecha: string): string {
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ fecha?: string; tab?: string }>;
+  searchParams: Promise<{ fecha?: string; tab?: string; tax?: string }>;
 }) {
-  const { fecha: fechaParam, tab: tabParam } = await searchParams;
+  const { fecha: fechaParam, tab: tabParam, tax: taxParam } = await searchParams;
   const dates = await getForeignDates();
   const dateStrings = dates.map((d) => d.fecha);
   const fecha =
@@ -54,6 +58,8 @@ export default async function Page({
   const tab: TabId = TABS.some((t) => t.id === tabParam)
     ? (tabParam as TabId)
     : 'overview';
+  // New taxonomy is the default; `?tax=legacy` falls back to the PDF buckets.
+  const taxonomy: ForeignTaxonomy = taxParam === 'legacy' ? 'legacy' : 'nt';
 
   if (!fecha) {
     return (
@@ -63,36 +69,39 @@ export default async function Page({
     );
   }
 
-  const [rows, changes, topFlows, managers, evolution, latam, directInv, fiEvo, eqEvo] = await Promise.all([
-    getForeignSummary(fecha),
-    getForeignChanges(fecha),
-    getForeignTopFlows(fecha),
-    getForeignManagers(fecha),
-    getForeignEvolution(),
-    getLatamEvolution(),
-    getForeignDirectInvestmentDetail(fecha),
-    getAssetClassEvolution('Fixed Income'),
-    getAssetClassEvolution('Equity'),
-  ]);
+  // Only fetch what the active tab renders — every query here is a Supabase
+  // round-trip, and fetching all tabs on every navigation is what made tab
+  // switches slow. Inactive tabs resolve to empty placeholders.
+  const [rows, evolution, changes, splits, topFlows, managers, latam, directInv, fiEvo, eqEvo] =
+    await Promise.all([
+      tab === 'overview' ? getForeignSummary(fecha, taxonomy) : Promise.resolve([]),
+      tab === 'overview' ? getForeignEvolution() : Promise.resolve([]),
+      tab === 'changes' ? getForeignChanges(fecha, taxonomy) : Promise.resolve(null),
+      tab === 'changes' ? getForeignChangesSplits(fecha, taxonomy) : Promise.resolve(null),
+      tab === 'changes' ? getForeignTopFlows(fecha) : Promise.resolve(null),
+      tab === 'managers' ? getForeignManagers(fecha) : Promise.resolve([]),
+      tab === 'latam' ? getLatamEvolution() : Promise.resolve([]),
+      tab === 'direct' ? getForeignDirectInvestmentDetail(fecha) : Promise.resolve(null),
+      tab === 'evolution' ? getAssetClassEvolution('Fixed Income') : Promise.resolve([]),
+      tab === 'evolution' ? getAssetClassEvolution('Equity') : Promise.resolve([]),
+    ]);
   const source = dates.find((d) => d.fecha === fecha)?.source ?? 'CHIST';
   const endLabel = `${fmtMonYY(fecha)} USD mm`;
-  const momLabel = `${fmtMonYY(changes.fechaMomStart)} USD mm`;
-  const ytdLabel = `${fmtMonYY(changes.fechaYtdStart)} USD mm`;
-  const ltmLabel = `${fmtMonYY(changes.fechaLtmStart)} USD mm`;
-  const threeYLabel = `${fmtMonYY(changes.fechaThreeYStart)} USD mm`;
   // A baseline is "available" if (a) it exists in our dataset and (b) it is not
   // the same fecha as one already shown (avoids duplicate toggles e.g. in Jan
   // where YTD start = MoM start).
   const dateSet = new Set(dateStrings);
-  const momAvailable = dateSet.has(changes.fechaMomStart);
+  const momAvailable = changes != null && dateSet.has(changes.fechaMomStart);
   const ytdAvailable =
+    changes != null &&
     dateSet.has(changes.fechaYtdStart) &&
     changes.fechaYtdStart !== changes.fechaMomStart;
   const ltmAvailable =
+    changes != null &&
     dateSet.has(changes.fechaLtmStart) &&
     changes.fechaLtmStart !== changes.fechaMomStart &&
     changes.fechaLtmStart !== changes.fechaYtdStart;
-  const threeYAvailable = dateSet.has(changes.fechaThreeYStart);
+  const threeYAvailable = changes != null && dateSet.has(changes.fechaThreeYStart);
 
   return (
     <main className="p-6 lg:p-8 space-y-6">
@@ -102,6 +111,10 @@ export default async function Page({
         dates={dateStrings}
         currentDate={fecha}
       >
+        <AsOfBadge module="foreign" />
+        {(tab === 'overview' || tab === 'changes') && (
+          <ForeignTaxonomyToggle current={taxonomy} />
+        )}
         <span
           className={
             source === 'SP_XML'
@@ -124,6 +137,15 @@ export default async function Page({
 
       {tab === 'overview' && (
         <>
+          <Disclaimer>
+            <strong>Taxonomy.</strong> Buckets default to the new fund taxonomy
+            (<code>BD_Funds</code>): <code>Alternative</code> folds the old
+            AR/HF into Private Equity, and regions add Brazil / RoW (EM) with
+            Chile treated as local. Switch to <em>Legacy (PDF)</em> in the header
+            to reproduce the PDF Sec 07 buckets. The grand total is identical
+            either way — only the breakdown changes.
+          </Disclaimer>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium">
@@ -139,8 +161,11 @@ export default async function Page({
         </>
       )}
 
-      {tab === 'changes' && (
+      {tab === 'changes' && changes && splits && topFlows && (
         <>
+          <div className="flex justify-end">
+            <AsOfBadge module="foreign" source="Retornos (Bloomberg)" />
+          </div>
           <ForeignChangesCard
             endRows={changes.endRows}
             momStartRows={changes.momStartRows}
@@ -148,10 +173,10 @@ export default async function Page({
             ltmStartRows={changes.ltmStartRows}
             threeYStartRows={changes.threeYStartRows}
             endLabel={endLabel}
-            momLabel={momLabel}
-            ytdLabel={ytdLabel}
-            ltmLabel={ltmLabel}
-            threeYLabel={threeYLabel}
+            momLabel={`${fmtMonYY(changes.fechaMomStart)} USD mm`}
+            ytdLabel={`${fmtMonYY(changes.fechaYtdStart)} USD mm`}
+            ltmLabel={`${fmtMonYY(changes.fechaLtmStart)} USD mm`}
+            threeYLabel={`${fmtMonYY(changes.fechaThreeYStart)} USD mm`}
             momPeriod={`${fmtMonYY(changes.fechaMomStart)} → ${fmtMonYY(fecha)}`}
             ytdPeriod={`${fmtMonYY(changes.fechaYtdStart)} → ${fmtMonYY(fecha)}`}
             ltmPeriod={`${fmtMonYY(changes.fechaLtmStart)} → ${fmtMonYY(fecha)}`}
@@ -160,6 +185,10 @@ export default async function Page({
             ytdAvailable={ytdAvailable}
             ltmAvailable={ltmAvailable}
             threeYAvailable={threeYAvailable}
+            momSplit={splits.mom}
+            ytdSplit={splits.ytd}
+            ltmSplit={splits.ltm}
+            threeYSplit={splits.threeY}
           />
 
           <ForeignTopFlowsCard
@@ -175,7 +204,7 @@ export default async function Page({
         <ForeignEvolutionTabs fiSeries={fiEvo} eqSeries={eqEvo} />
       )}
 
-      {tab === 'direct' && (
+      {tab === 'direct' && directInv && (
         <ForeignDirectInvestmentDetail
           fechas={directInv.fechas}
           rows={directInv.rows}

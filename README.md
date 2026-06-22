@@ -49,9 +49,9 @@ python sync_sqlserver_to_supabase.py
 # Backfill / explicit range
 python sync_sqlserver_to_supabase.py --start 2020-01-01 --end 2024-12-31
 
-# SP XML cartera_agregada (rolling 4-month window by default; use --no-prune
-# when running monthly incremental to preserve historical periodos)
-python sync_sp_xml.py --no-prune
+# SP XML cartera_agregada (refreshes the last 4 published periodos; older
+# periodos are preserved -- historical backfill is sticky)
+python sync_sp_xml.py
 ```
 
 ## Architecture notes

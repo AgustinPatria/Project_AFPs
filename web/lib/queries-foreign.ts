@@ -1,5 +1,10 @@
 import { supabase } from './supabase-server';
-import type { ForeignSource, ForeignSummaryRow } from './types-foreign';
+import type {
+  ForeignSource,
+  ForeignSplit,
+  ForeignSummaryRow,
+  ForeignTaxonomy,
+} from './types-foreign';
 
 /**
  * Distinct fecha_reporte in v_foreign_pdf_summary_combined (latest first),
@@ -11,6 +16,7 @@ export async function getForeignDates(): Promise<
   const { data, error } = await supabase
     .from('v_foreign_pdf_summary_combined')
     .select('fecha_reporte,source')
+    .gte('fecha_reporte', '2025-01-01')
     .order('fecha_reporte', { ascending: false })
     // ~45-53 rows per fecha; 80 months ≈ 4,000 rows. 5,000 leaves headroom.
     .limit(5000);
@@ -31,18 +37,24 @@ export async function getForeignDates(): Promise<
  */
 export async function getForeignSummary(
   fecha: string,
+  taxonomy: ForeignTaxonomy = 'nt',
 ): Promise<ForeignSummaryRow[]> {
+  const nt = taxonomy === 'nt';
   const { data, error } = await supabase
     .from('v_foreign_pdf_summary_combined')
-    .select('fecha_reporte,pdf_bucket,pdf_em_dm,pdf_subregion,pdf_fi_category,monto_usd_mm,source')
+    .select(
+      'fecha_reporte,pdf_bucket,pdf_em_dm,pdf_subregion,pdf_fi_category,pdf_bucket_nt,pdf_em_dm_nt,pdf_subregion_nt,pdf_fi_category_nt,monto_usd_mm,source',
+    )
     .eq('fecha_reporte', fecha);
   if (error) throw error;
   return (data ?? []).map((r) => ({
     fecha_reporte: r.fecha_reporte as string,
-    pdf_bucket: r.pdf_bucket as string,
-    pdf_em_dm: (r.pdf_em_dm as string | null) ?? null,
-    pdf_subregion: (r.pdf_subregion as string | null) ?? null,
-    pdf_fi_category: (r.pdf_fi_category as string | null) ?? null,
+    pdf_bucket: (nt ? r.pdf_bucket_nt : r.pdf_bucket) as string,
+    pdf_em_dm: ((nt ? r.pdf_em_dm_nt : r.pdf_em_dm) as string | null) ?? null,
+    pdf_subregion:
+      ((nt ? r.pdf_subregion_nt : r.pdf_subregion) as string | null) ?? null,
+    pdf_fi_category:
+      ((nt ? r.pdf_fi_category_nt : r.pdf_fi_category) as string | null) ?? null,
     monto_usd_mm: Number(r.monto_usd_mm) || 0,
     source: (r.source as ForeignSource) ?? 'CHIST',
   }));
@@ -80,7 +92,10 @@ function priorBaselines(fecha: string): {
  * empty arrays for baselines we don't have data for, which would otherwise
  * collapse to "all positive change" silently.
  */
-export async function getForeignChanges(fecha: string): Promise<{
+export async function getForeignChanges(
+  fecha: string,
+  taxonomy: ForeignTaxonomy = 'nt',
+): Promise<{
   fechaEnd: string;
   fechaMomStart: string;
   fechaYtdStart: string;
@@ -95,11 +110,11 @@ export async function getForeignChanges(fecha: string): Promise<{
   const { mom, ytd, ltm, threeY } = priorBaselines(fecha);
   const [endRows, momStartRows, ytdStartRows, ltmStartRows, threeYStartRows] =
     await Promise.all([
-      getForeignSummary(fecha),
-      getForeignSummary(mom),
-      getForeignSummary(ytd),
-      getForeignSummary(ltm),
-      getForeignSummary(threeY),
+      getForeignSummary(fecha, taxonomy),
+      getForeignSummary(mom, taxonomy),
+      getForeignSummary(ytd, taxonomy),
+      getForeignSummary(ltm, taxonomy),
+      getForeignSummary(threeY, taxonomy),
     ]);
   return {
     fechaEnd: fecha,
@@ -112,6 +127,138 @@ export async function getForeignChanges(fecha: string): Promise<{
     ytdStartRows,
     ltmStartRows,
     threeYStartRows,
+  };
+}
+
+// ============================================================================
+// Return / Flow split (PDF Sec 07 pages 4-5)
+// ============================================================================
+//
+// v_foreign_returns_flows_summary replicates the legacy Excel methodology per
+// instrument and month: return = prior-month position × Bloomberg monthly USD
+// total return; flow = position change − return. Scope is Equity / Fixed
+// Income / Private Equity (Direct Investment excluded, as in the PDF). Window
+// aggregates are sums of the monthly splits, so a window is only fully split
+// when every month inside it has returns data (available Feb-2025 onwards).
+
+export type ForeignChangesSplits = {
+  mom: ForeignSplit;
+  ytd: ForeignSplit;
+  ltm: ForeignSplit;
+  threeY: ForeignSplit;
+};
+
+type SplitRaw = {
+  fecha_reporte: string;
+  pdf_bucket: string;
+  pdf_em_dm: string | null;
+  pdf_subregion: string | null;
+  pdf_fi_category: string | null;
+  pdf_bucket_nt: string | null;
+  pdf_em_dm_nt: string | null;
+  pdf_subregion_nt: string | null;
+  pdf_fi_category_nt: string | null;
+  return_usd_mm: number;
+  flow_usd_mm: number;
+};
+
+/** Month-end fechas strictly after `startExcl` and up to `endIncl`. */
+function monthEndsBetween(startExcl: string, endIncl: string): string[] {
+  const out: string[] = [];
+  let [y, m] = startExcl.split('-').map(Number);
+  for (let i = 0; i < 120; i++) {
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+    const monthEnd = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+    if (monthEnd > endIncl) break;
+    out.push(monthEnd);
+  }
+  return out;
+}
+
+function buildSplit(
+  raw: SplitRaw[],
+  startExcl: string,
+  endIncl: string,
+  taxonomy: ForeignTaxonomy,
+): ForeignSplit {
+  const nt = taxonomy === 'nt';
+  const inWindow = raw.filter(
+    (r) => r.fecha_reporte > startExcl && r.fecha_reporte <= endIncl,
+  );
+  const covered = [...new Set(inWindow.map((r) => r.fecha_reporte))].sort();
+  const coveredSet = new Set(covered);
+  const missing = monthEndsBetween(startExcl, endIncl).filter(
+    (f) => !coveredSet.has(f),
+  );
+  const toSummary = (r: SplitRaw, usd: number): ForeignSummaryRow => ({
+    fecha_reporte: r.fecha_reporte,
+    pdf_bucket: (nt ? r.pdf_bucket_nt : r.pdf_bucket) ?? r.pdf_bucket,
+    pdf_em_dm: (nt ? r.pdf_em_dm_nt : r.pdf_em_dm) ?? null,
+    pdf_subregion: (nt ? r.pdf_subregion_nt : r.pdf_subregion) ?? null,
+    pdf_fi_category: (nt ? r.pdf_fi_category_nt : r.pdf_fi_category) ?? null,
+    monto_usd_mm: usd,
+    source: 'SP_XML',
+  });
+  return {
+    covered,
+    missing,
+    returnRows: inWindow.map((r) => toSummary(r, r.return_usd_mm)),
+    flowRows: inWindow.map((r) => toSummary(r, r.flow_usd_mm)),
+  };
+}
+
+/**
+ * Return/Flow splits for the four Changes windows ending at `fecha`. One
+ * paginated fetch covering the widest window (3Y), sliced per window. Windows
+ * whose months predate the returns series come back with empty `covered` —
+ * the UI shows the un-split total there.
+ */
+export async function getForeignChangesSplits(
+  fecha: string,
+  taxonomy: ForeignTaxonomy = 'nt',
+): Promise<ForeignChangesSplits> {
+  const { mom, ytd, ltm, threeY } = priorBaselines(fecha);
+  const raw: SplitRaw[] = [];
+  const PAGE = 1000;
+  let offset = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { data, error } = await supabase
+      .from('v_foreign_returns_flows_summary')
+      .select(
+        'fecha_reporte,pdf_bucket,pdf_em_dm,pdf_subregion,pdf_fi_category,pdf_bucket_nt,pdf_em_dm_nt,pdf_subregion_nt,pdf_fi_category_nt,return_usd_mm,flow_usd_mm',
+      )
+      .gt('fecha_reporte', threeY)
+      .lte('fecha_reporte', fecha)
+      .range(offset, offset + PAGE - 1);
+    if (error) throw error;
+    for (const r of data ?? []) {
+      raw.push({
+        fecha_reporte: r.fecha_reporte as string,
+        pdf_bucket: r.pdf_bucket as string,
+        pdf_em_dm: (r.pdf_em_dm as string | null) ?? null,
+        pdf_subregion: (r.pdf_subregion as string | null) ?? null,
+        pdf_fi_category: (r.pdf_fi_category as string | null) ?? null,
+        pdf_bucket_nt: (r.pdf_bucket_nt as string | null) ?? null,
+        pdf_em_dm_nt: (r.pdf_em_dm_nt as string | null) ?? null,
+        pdf_subregion_nt: (r.pdf_subregion_nt as string | null) ?? null,
+        pdf_fi_category_nt: (r.pdf_fi_category_nt as string | null) ?? null,
+        return_usd_mm: Number(r.return_usd_mm) || 0,
+        flow_usd_mm: Number(r.flow_usd_mm) || 0,
+      });
+    }
+    if ((data ?? []).length < PAGE) break;
+    offset += PAGE;
+  }
+  return {
+    mom: buildSplit(raw, mom, fecha, taxonomy),
+    ytd: buildSplit(raw, ytd, fecha, taxonomy),
+    ltm: buildSplit(raw, ltm, fecha, taxonomy),
+    threeY: buildSplit(raw, threeY, fecha, taxonomy),
   };
 }
 
@@ -132,127 +279,29 @@ export type FundDeltaRow = {
   delta_usd_mm: number;
 };
 
-// PDF Sec 08 methodology — pure transaction flow per fund using
-//   flow_clp_nemo = inv_curr − inv_prev × (price_curr / price_prev)
-// aggregated to fund_id, then converted via end-period FX. Same approach as
-// Chilean Stocks Sec 06 fix; only CHIST fechas (mv_chist_foreign_units_by_nemo).
-type ForeignNemoSnap = {
-  fund_id: string;
-  fondo: string;
-  manager: string | null;
-  nemo: string;
-  inv_clp: number;
-  price_clp: number;
-};
-
-async function getForeignNemoSnapshot(fecha: string): Promise<ForeignNemoSnap[]> {
-  // ~17K rows / fecha so we paginate around the PostgREST 1000-row cap.
-  const out: ForeignNemoSnap[] = [];
-  const PAGE = 1000;
-  let offset = 0;
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const { data, error } = await supabase
-      .from('mv_chist_foreign_units_by_nemo')
-      .select('fund_id,fondo,manager,nemo,inv_clp,price_clp')
-      .eq('fecha_reporte', fecha)
-      .range(offset, offset + PAGE - 1);
-    if (error) throw error;
-    const batch = (data ?? []) as Array<{
-      fund_id: string;
-      fondo: string;
-      manager: string | null;
-      nemo: string;
-      inv_clp: number | string | null;
-      price_clp: number | string | null;
-    }>;
-    for (const r of batch) {
-      out.push({
-        fund_id: String(r.fund_id),
-        fondo: r.fondo,
-        manager: r.manager ?? null,
-        nemo: r.nemo,
-        inv_clp: Number(r.inv_clp) || 0,
-        price_clp: Number(r.price_clp) || 0,
-      });
-    }
-    if (batch.length < PAGE) break;
-    offset += PAGE;
-  }
-  return out;
-}
-
-async function getFxClpPerUsdForeign(fecha: string): Promise<number> {
-  const { data, error } = await supabase
-    .from('tipo_cambio')
-    .select('valor')
-    .eq('fecha', fecha)
-    .eq('instrumento_codigo', 'USDCLP Curncy')
-    .limit(1);
-  if (error) throw error;
-  return Number(data?.[0]?.valor) || 0;
-}
-
-/**
- * Aggregate per-nemo flows up to fund level using
- *   flow_clp = inv_curr − inv_prev × (price_curr / price_prev)
- * Returns top N inflows + top N outflows in USD MM.
- */
-function computeFundFlows(
-  end: ForeignNemoSnap[],
-  start: ForeignNemoSnap[],
-  fxCurr: number,
+// PDF Sec 08 methodology — flow = Δposition − return per ISIN per month (the
+// same Bloomberg-returns split behind the Sec 07 Changes pages), aggregated to
+// fund level by v_foreign_fund_flows (share classes consolidated via the
+// dim_homol_funds → dim_bd_funds chain). Validated vs the Mar-26 PDF: top-10
+// outflows match to the decimal; inflows additionally surface funds the PDF
+// omits (its flows matrix truncates at row 2000 of Output_25sd).
+function topSplit(
+  deltas: FundDeltaRow[],
   topN: number,
 ): { inflows: FundDeltaRow[]; outflows: FundDeltaRow[] } {
-  // Match per-nemo within fund_id.
-  const key = (fund_id: string, nemo: string) => `${fund_id}|${nemo}`;
-  const startByKey = new Map(start.map((s) => [key(s.fund_id, s.nemo), s]));
-  const flowsByFund = new Map<
-    string,
-    { fondo: string; manager: string | null; flow_clp: number }
-  >();
-  const seen = new Set<string>();
-  for (const c of end) {
-    const k = key(c.fund_id, c.nemo);
-    seen.add(k);
-    const p = startByKey.get(k);
-    let flowClp: number;
-    if (!p) {
-      flowClp = c.inv_clp;
-    } else if (!p.price_clp) {
-      flowClp = c.inv_clp - p.inv_clp;
-    } else {
-      flowClp = c.inv_clp - p.inv_clp * (c.price_clp / p.price_clp);
-    }
-    const cur = flowsByFund.get(c.fund_id);
-    if (cur) cur.flow_clp += flowClp;
-    else flowsByFund.set(c.fund_id, { fondo: c.fondo, manager: c.manager, flow_clp: flowClp });
-  }
-  // Positions present at start but not end (closed).
-  for (const p of start) {
-    const k = key(p.fund_id, p.nemo);
-    if (seen.has(k)) continue;
-    const cur = flowsByFund.get(p.fund_id);
-    if (cur) cur.flow_clp -= p.inv_clp;
-    else flowsByFund.set(p.fund_id, { fondo: p.fondo, manager: p.manager, flow_clp: -p.inv_clp });
-  }
-  const fxScale = fxCurr * 1e6;
-  const deltas: FundDeltaRow[] = [];
-  for (const [fund_id, agg] of flowsByFund) {
-    const usd = fxScale > 0 ? agg.flow_clp / fxScale : 0;
-    deltas.push({ fund_id, fondo: agg.fondo, manager: agg.manager, delta_usd_mm: usd });
-  }
-  deltas.sort((a, b) => b.delta_usd_mm - a.delta_usd_mm);
+  const sorted = [...deltas].sort((a, b) => b.delta_usd_mm - a.delta_usd_mm);
   return {
-    inflows: deltas.filter((d) => d.delta_usd_mm > 0).slice(0, topN),
-    outflows: deltas.filter((d) => d.delta_usd_mm < 0).slice(-topN).reverse(),
+    inflows: sorted.filter((d) => d.delta_usd_mm > 0).slice(0, topN),
+    outflows: sorted.filter((d) => d.delta_usd_mm < 0).slice(-topN).reverse(),
   };
 }
 
 /**
  * Top N inflows and outflows per fund for the MoM and YTD windows ending at
- * `fecha`. Uses the units-based PDF Sec 08 methodology. Returns empty buckets
- * for fechas outside CHIST coverage (SP XML window).
+ * `fecha` (PDF Sec 08). Monthly = the fund flows of `fecha`; YTD = sum of
+ * monthly fund flows in the calendar year up to `fecha`. Returns empty
+ * buckets when no months in the window have Bloomberg returns (e.g. the
+ * latest fecha before its returns arrive, or fechas before Feb-25).
  */
 export async function getForeignTopFlows(
   fecha: string,
@@ -265,19 +314,67 @@ export async function getForeignTopFlows(
   ytd: { inflows: FundDeltaRow[]; outflows: FundDeltaRow[] };
 }> {
   const { mom, ytd } = priorBaselines(fecha);
-  const [end, momStart, ytdStart, fxCurr] = await Promise.all([
-    getForeignNemoSnapshot(fecha),
-    getForeignNemoSnapshot(mom),
-    getForeignNemoSnapshot(ytd),
-    getFxClpPerUsdForeign(fecha),
-  ]);
-  const empty = { inflows: [] as FundDeltaRow[], outflows: [] as FundDeltaRow[] };
+  // One paginated fetch over the YTD window (it contains the MoM month).
+  type Row = {
+    fecha_reporte: string;
+    fund_id: string;
+    fondo: string;
+    manager: string | null;
+    flow_usd_mm: number;
+  };
+  const rows: Row[] = [];
+  const PAGE = 1000;
+  let offset = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { data, error } = await supabase
+      .from('v_foreign_fund_flows')
+      .select('fecha_reporte,fund_id,fondo,manager,flow_usd_mm')
+      .gt('fecha_reporte', ytd)
+      .lte('fecha_reporte', fecha)
+      .range(offset, offset + PAGE - 1);
+    if (error) throw error;
+    for (const r of data ?? []) {
+      rows.push({
+        fecha_reporte: r.fecha_reporte as string,
+        fund_id: String(r.fund_id),
+        fondo: r.fondo as string,
+        manager: (r.manager as string | null) ?? null,
+        flow_usd_mm: Number(r.flow_usd_mm) || 0,
+      });
+    }
+    if ((data ?? []).length < PAGE) break;
+    offset += PAGE;
+  }
+
+  const momDeltas: FundDeltaRow[] = rows
+    .filter((r) => r.fecha_reporte === fecha)
+    .map((r) => ({
+      fund_id: r.fund_id,
+      fondo: r.fondo,
+      manager: r.manager,
+      delta_usd_mm: r.flow_usd_mm,
+    }));
+
+  const ytdByFund = new Map<string, FundDeltaRow>();
+  for (const r of rows) {
+    const cur = ytdByFund.get(r.fund_id);
+    if (cur) cur.delta_usd_mm += r.flow_usd_mm;
+    else
+      ytdByFund.set(r.fund_id, {
+        fund_id: r.fund_id,
+        fondo: r.fondo,
+        manager: r.manager,
+        delta_usd_mm: r.flow_usd_mm,
+      });
+  }
+
   return {
     fechaEnd: fecha,
     fechaMomStart: mom,
     fechaYtdStart: ytd,
-    mom: end.length && momStart.length ? computeFundFlows(end, momStart, fxCurr, topN) : empty,
-    ytd: end.length && ytdStart.length ? computeFundFlows(end, ytdStart, fxCurr, topN) : empty,
+    mom: topSplit(momDeltas, topN),
+    ytd: topSplit([...ytdByFund.values()], topN),
   };
 }
 
@@ -291,6 +388,13 @@ export type ManagerRow = {
   asset_class: string | null;
   category: string | null;
   region: string | null;
+  // New taxonomy (BD_Funds.xlsx) — carried through the same view chain as the
+  // legacy asset_class/category/region. Null for funds the new file doesn't classify.
+  nt_asset_class: string | null;
+  nt_sub_asset_class: string | null;
+  nt_category: string | null;
+  nt_sub_category: string | null;
+  nt_region: string | null;
   monto_usd_mm: number;
 };
 
@@ -304,7 +408,9 @@ const MANAGER_ALIASES: Record<string, string> = {
 export async function getForeignManagers(fecha: string): Promise<ManagerRow[]> {
   const { data, error } = await supabase
     .from('v_foreign_managers_combined')
-    .select('manager,fund_style,asset_class,category,region,monto_usd_mm')
+    .select(
+      'manager,fund_style,asset_class,category,region,nt_asset_class,nt_sub_asset_class,nt_category,nt_sub_category,nt_region,monto_usd_mm',
+    )
     .eq('fecha_reporte', fecha);
   if (error) throw error;
   return (data ?? []).map((r) => {
@@ -315,6 +421,11 @@ export async function getForeignManagers(fecha: string): Promise<ManagerRow[]> {
       asset_class: (r.asset_class as string | null) ?? null,
       category: (r.category as string | null) ?? null,
       region: (r.region as string | null) ?? null,
+      nt_asset_class: (r.nt_asset_class as string | null) ?? null,
+      nt_sub_asset_class: (r.nt_sub_asset_class as string | null) ?? null,
+      nt_category: (r.nt_category as string | null) ?? null,
+      nt_sub_category: (r.nt_sub_category as string | null) ?? null,
+      nt_region: (r.nt_region as string | null) ?? null,
       monto_usd_mm: Number(r.monto_usd_mm) || 0,
     };
   });

@@ -151,6 +151,7 @@ export async function getChileanStocksDates(): Promise<string[]> {
   const { data, error } = await supabase
     .from('v_chilean_stocks_gics')
     .select('fecha_reporte')
+    .gte('fecha_reporte', '2025-01-01')
     .order('fecha_reporte', { ascending: false })
     .limit(5000);
   if (error) throw error;

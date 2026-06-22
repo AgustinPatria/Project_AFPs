@@ -70,6 +70,12 @@ load_dotenv()
 WINDOW_START_PERIODO = "2025-01"      # sp_*: filtro f.periodo >= esto
 WINDOW_START_FECHA   = "2025-01-01"   # cotizantes_afp: filtro fecha >= esto
 
+# Periodos pre-ventana que el dashboard usa como baselines del tab Changes de
+# /foreign (LTM = Nov-24, 3Y = Nov-22). El cleanup NO debe borrarlos: en
+# 2026-06 el cleanup se llevo ambos y rompio los baselines (Nov-22 ya no
+# existe ni en SQL Server; se restaurara via TBL_SPE_REPORTE25_SD).
+BASELINE_PERIODOS = ("2022-11", "2024-11")
+
 # Batch a Supabase. supabase-py serializa todo el batch en un POST; batches
 # muy grandes pueden chocar contra el body size limit. 500 es seguro.
 SB_BATCH = 500
@@ -156,10 +162,18 @@ def _rows_to_dicts(df: pd.DataFrame) -> list:
 
 def cleanup_out_of_window(client: Client) -> None:
     """Borra de Supabase los periodos < WINDOW_START_PERIODO (data heredada del
-    pipeline viejo que escribia directo). One-shot al inicio del mirror."""
+    pipeline viejo que escribia directo), EXCEPTO los BASELINE_PERIODOS que el
+    dashboard necesita. One-shot al inicio del mirror."""
     print(f"[cleanup] borrando sp_* con periodo < {WINDOW_START_PERIODO} y "
-          f"cotizantes con fecha < {WINDOW_START_FECHA}")
-    resp = client.table("sp_fila").delete().lt("periodo", WINDOW_START_PERIODO).execute()
+          f"cotizantes con fecha < {WINDOW_START_FECHA} "
+          f"(preservando baselines {', '.join(BASELINE_PERIODOS)})")
+    resp = (
+        client.table("sp_fila")
+        .delete()
+        .lt("periodo", WINDOW_START_PERIODO)
+        .not_.in_("periodo", list(BASELINE_PERIODOS))
+        .execute()
+    )
     n_fila = len(resp.data) if resp.data else 0
     if n_fila:
         print(f"      {n_fila:,} sp_fila viejas borradas (cascade hijas)")

@@ -4,6 +4,7 @@ import { Target } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Disclaimer } from '@/components/disclaimer';
 import { PageHeader } from '@/components/page-header';
+import { AsOfBadge } from '@/components/as-of-badge';
 import {
   LocalEquityAreaChart,
   LocalEquityTable,
@@ -91,8 +92,17 @@ export default async function Page({
           subtitle="Market share by Asset Class · Local Equity Direct vs Investment Funds"
           titleIcon={<Target className="h-5 w-5" />}
         >
+          <AsOfBadge module="strategy" source="Local Equity DI (CHIST)" />
           <StrategyFamilySelector families={families} current={family_id} />
         </PageHeader>
+
+        <Disclaimer>
+          <strong>Taxonomy.</strong> The Investment Funds row uses the new fund
+          taxonomy (<code>nt_asset_class='Equity'</code> AND{' '}
+          <code>nt_region='Chile'</code>). For the Chilean-equity-fund universe
+          the new and legacy classifications coincide, so the figures are
+          unchanged from the PDF Sec 04.
+        </Disclaimer>
 
         <Card>
           <CardHeader>
@@ -153,6 +163,7 @@ export default async function Page({
         dates={dateStrings}
         currentDate={currentFecha}
       >
+        <AsOfBadge module="strategy" />
         <StrategyFamilySelector families={families} current={family_id} />
       </PageHeader>
 

@@ -47,7 +47,11 @@ export async function getStrategyFamilies(): Promise<StrategyFamily[]> {
 export type LocalEquityPoint = {
   fecha_reporte: string;
   direct_clp_bn: number;
+  // funds_clp_bn renders the new taxonomy by default (nt_asset_class='Equity'
+  // AND nt_region='Chile'); funds_clp_bn_legacy keeps the old dim_bd_funds
+  // membership. For the Chilean-equity-fund universe both coincide today.
   funds_clp_bn: number;
+  funds_clp_bn_legacy: number;
   total_clp_bn: number;
   source: 'CHIST' | 'SP_XML';
 };
@@ -65,14 +69,17 @@ export async function getLocalEquityDates(): Promise<string[]> {
 export async function getLocalEquityHistory(): Promise<LocalEquityPoint[]> {
   const { data, error } = await supabase
     .from('v_local_equity_di_vs_if_combined')
-    .select('fecha_reporte,direct_clp_bn,funds_clp_bn,total_clp_bn,source')
+    .select(
+      'fecha_reporte,direct_clp_bn,funds_clp_bn,funds_clp_bn_nt,total_clp_bn,total_clp_bn_nt,source',
+    )
     .order('fecha_reporte', { ascending: true });
   if (error) throw error;
   return (data ?? []).map((r) => ({
     fecha_reporte: r.fecha_reporte as string,
     direct_clp_bn: Number(r.direct_clp_bn) || 0,
-    funds_clp_bn: Number(r.funds_clp_bn) || 0,
-    total_clp_bn: Number(r.total_clp_bn) || 0,
+    funds_clp_bn: Number(r.funds_clp_bn_nt) || 0,
+    funds_clp_bn_legacy: Number(r.funds_clp_bn) || 0,
+    total_clp_bn: Number(r.total_clp_bn_nt) || 0,
     source: (r.source as 'CHIST' | 'SP_XML') ?? 'CHIST',
   }));
 }
@@ -83,6 +90,7 @@ export async function getStrategyDates(family_id: number): Promise<string[]> {
     .select('periodo')
     .eq('family_id', family_id)
     .not('monto_dolares', 'is', null)
+    .gte('periodo', '2025-01')
     .order('periodo', { ascending: false });
   if (error) throw error;
   return Array.from(new Set((data ?? []).map((r) => r.periodo as string)));

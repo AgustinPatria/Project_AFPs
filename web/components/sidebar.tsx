@@ -16,6 +16,7 @@ import {
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { logout } from '@/app/login/actions';
@@ -29,17 +30,22 @@ type NavItem = {
 };
 
 // PDF section prefix shown left of each label so the sidebar maps 1:1 onto the
-// printed report. Sections 08 and 10 don't have routes yet.
+// printed report. Sec 08 (Top Net Purchases and Sales — Foreign Funds) lives
+// inside /foreign as the Top Flows card of the Changes tab.
 type PdfSection = string | null; // e.g. '01', '02·03', null for legacy.
 const NAV: (NavItem & { pdf: PdfSection })[] = [
   { href: '/', label: 'Alternative Assets', icon: Briefcase, ready: true, pdf: null },
   { href: '/market-share', label: 'Market Share', icon: BarChart3, ready: true, pdf: '01' },
   { href: '/asset-allocation', label: 'Asset Allocation', icon: PieChart, ready: true, pdf: '02·03' },
   { href: '/strategy', label: 'Strategy', icon: Target, ready: true, pdf: '04' },
-  { href: '/foreign', label: 'Foreign Investment', icon: Globe, ready: true, pdf: '07' },
+  { href: '/foreign', label: 'Foreign Investment', icon: Globe, ready: true, pdf: '07·08' },
   { href: '/chilean-stocks', label: 'Chilean Stocks', icon: Building2, ready: true, pdf: '05·06' },
-  { href: '/distributors', label: 'Distributors', icon: Users, pdf: '09' },
+  { href: '/distributors', label: 'Distributors', icon: Users, ready: true, pdf: '09' },
   { href: '/managers', label: 'Managers', icon: UserCog, ready: true, pdf: '10' },
+];
+
+const ADMIN_NAV: { href: string; label: string; icon: typeof BarChart3 }[] = [
+  { href: '/admin/data-sources', label: 'Data Sources', icon: Layers },
 ];
 
 const STORAGE_KEY = 'sidebar:collapsed';
@@ -173,6 +179,39 @@ export function Sidebar() {
           );
         })}
       </nav>
+      <div
+        className={cn(
+          'mt-4 pt-4 border-t border-sidebar-border space-y-0.5',
+          collapsed ? 'px-2' : 'px-3',
+        )}
+      >
+        {!collapsed ? (
+          <div className="px-3 mb-1 text-[9px] uppercase tracking-[0.18em] text-muted-foreground/50 font-semibold">
+            Admin
+          </div>
+        ) : null}
+        {ADMIN_NAV.map((item) => {
+          const isActive = pathname?.startsWith(item.href);
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              title={collapsed ? item.label : undefined}
+              className={cn(
+                'group flex items-center rounded-md text-sm font-medium transition-colors',
+                collapsed ? 'justify-center px-2 py-2' : 'gap-2.5 px-3 py-2',
+                isActive
+                  ? 'bg-brand/10 text-sidebar-foreground shadow-[inset_3px_0_0_var(--brand)]'
+                  : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
+              )}
+            >
+              <Icon className={cn('h-4 w-4', isActive && 'text-brand')} />
+              {!collapsed && item.label}
+            </Link>
+          );
+        })}
+      </div>
       <div
         className={cn(
           'mt-auto py-4 border-t border-sidebar-border space-y-2',

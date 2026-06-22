@@ -3,6 +3,7 @@ export const revalidate = 3600;
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Disclaimer } from '@/components/disclaimer';
 import { PageHeader } from '@/components/page-header';
+import { AsOfBadge } from '@/components/as-of-badge';
 import { AssetClassMatrix } from '@/components/asset-allocation/asset-class-matrix';
 import {
   AssetAllocationOverTime,
@@ -58,7 +59,9 @@ export default async function Page({
         subtitle="AFP Chile · system view at month-end"
         dates={dates}
         currentDate={fecha}
-      />
+      >
+        <AsOfBadge module="asset_allocation" />
+      </PageHeader>
 
       <Disclaimer variant="data-sources" />
 

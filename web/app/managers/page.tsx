@@ -2,6 +2,8 @@ export const revalidate = 3600;
 
 import { Disclaimer } from '@/components/disclaimer';
 import { PageHeader } from '@/components/page-header';
+import { SourceBadge } from '@/components/source-badge';
+import { AsOfBadge } from '@/components/as-of-badge';
 import { ForeignManagersCard } from '@/components/foreign/foreign-managers-card';
 import { getForeignDates, getForeignManagers } from '@/lib/queries-foreign';
 
@@ -35,6 +37,8 @@ export default async function Page({
         dates={dateStrings}
         currentDate={fecha}
       >
+        <SourceBadge dataset="sec09_isin_classification" />
+        <AsOfBadge module="managers" />
         <span
           className={
             source === 'SP_XML'
@@ -66,6 +70,14 @@ export default async function Page({
         funds present in CHIST — e.g. BNP Paribas Japan Small Cap (214) and BNP
         Paribas Russia Equity (34) appear here but not in the PDF, same pattern
         as the Aegon HY share-class gap flagged on /strategy.
+      </Disclaimer>
+
+      <Disclaimer>
+        <strong>Taxonomy.</strong> The FI category columns default to the new
+        fund taxonomy (<code>BD_Funds</code>: Sub Asset Class / Sub-Category).
+        Switch the selector to <em>Legacy</em> to reproduce the{' '}
+        <code>dim_bd_funds.category</code> buckets used by the PDF Sec 10. The
+        EM/DM split and region columns still use the legacy region.
       </Disclaimer>
 
       <ForeignManagersCard rows={managers} />

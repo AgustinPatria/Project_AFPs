@@ -63,3 +63,8 @@ sync/recovery/
 
 # Local screenshots / dumps
 UsersaunanueInternship*.png
+
+# VBA decompilation scratch + ad-hoc diffs (not part of the dashboard)
+_vba_dumps/
+_vba_dumps_decoded/
+BD_Funds_diff.csv

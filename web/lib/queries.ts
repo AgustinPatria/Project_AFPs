@@ -10,9 +10,12 @@ import {
 } from './dimensions';
 
 export async function getAvailableDates(limit = 60): Promise<string[]> {
+  // v_total = cartera (CHIST) dates, the binding constraint — v_aum reaches
+  // further back/forward but NAV/Uncalled only exist where carteras do.
   const { data, error } = await supabase
-    .from('v_aum')
+    .from('v_total')
     .select('fecha')
+    .gte('fecha', '2025-01-01')
     .order('fecha', { ascending: false })
     .limit(limit * AFPS.length);
   if (error) throw error;

@@ -28,24 +28,18 @@ export function ForeignTopFlowsCard({ mom, ytd, momPeriod, ytdPeriod }: Props) {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <CardTitle className="text-sm font-medium">
-              Top Net Inflows and Outflows — Foreign Funds ({period})
+              Top Net Inflows and Outflows — Foreign Funds · Sec 08 ({period})
             </CardTitle>
             <p className="text-[11px] text-muted-foreground mt-1 max-w-3xl">
-              Pure transaction flows per fund using CHIST{' '}
-              <code>inv_end − inv_start × (price_end / price_start)</code>{' '}
-              (PDF Sec 08 methodology). Only fechas inside CHIST coverage;
-              SP XML fechas do not publish per-fund units.{' '}
-              <strong>Top funds may diverge from the PDF by ±10%</strong> for
-              three reasons: (1) we cover the full CHIST foreign universe,
-              while the PDF only includes the ~638 ISINs in the legacy
-              <code>BaseDatos_Tickers</code> sheet — large positions outside
-              that list (e.g. BNP Paribas Easy S&P 500 UCITS ETF, +404 USD MM
-              Nov-25) show here but not in the PDF; (2) ETF distributions are
-              implicit in <code>precio</code> but not in Bloomberg
-              total-return — the PDF subtracts a proper Return component
-              using <code>TOT_RETURN_INDEX_GROSS_DVDS</code> we don't yet
-              sync; (3) share classes of the same fund are kept separate
-              here, the PDF tends to consolidate them.
+              Net flow per fund = position change − return, using Bloomberg
+              monthly USD total returns per ISIN (the exact PDF Sec 08
+              methodology), with share classes consolidated per fund. YTD is
+              the sum of monthly flows over months with returns data (from
+              Feb-25). Validated vs the Mar-26 PDF: top-10 outflows match to
+              the decimal. <strong>Inflows may surface funds the PDF
+              omits</strong> — the legacy flows matrix silently truncates the
+              last ~120 instruments of its classification sheet; this view
+              covers all of them.
             </p>
           </div>
           <SegmentedControl
@@ -62,8 +56,9 @@ export function ForeignTopFlowsCard({ mom, ytd, momPeriod, ytdPeriod }: Props) {
       <CardContent>
         {!hasData ? (
           <p className="text-xs text-muted-foreground">
-            Transaction flows are only computed for fechas inside CHIST coverage
-            (≤ Nov-25). Select an earlier date to see purchases and sales.
+            No flows for this period yet — Bloomberg returns for the month have
+            not been synced (flows are available from Feb-25 up to the latest
+            month with returns data). Select an earlier date.
           </p>
         ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">

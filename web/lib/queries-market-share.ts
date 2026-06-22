@@ -14,6 +14,7 @@ export async function getMarketShareDates(): Promise<string[]> {
   const { data, error } = await supabase
     .from('v_returns_afp_tipo')
     .select('fecha')
+    .gte('fecha', '2025-01-01')
     .order('fecha', { ascending: false })
     // 7 AFPs × 6 tipo_fondo = 42 rows per fecha. 100 months × 42 = 4200.
     .limit(5000);

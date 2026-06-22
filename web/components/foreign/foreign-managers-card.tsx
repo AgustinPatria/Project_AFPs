@@ -17,6 +17,12 @@ import { cn } from '@/lib/utils';
 
 type Section = 'em-fi' | 'dm-fi' | 'equity';
 
+// Which classification drives the FI sub-category columns. 'legacy' = the
+// dim_bd_funds.category buckets the PDF Sec 10 uses (default, unchanged).
+// The two nt_ options come from the new taxonomy (BD_Funds.xlsx), carried
+// through the same view chain as the legacy columns.
+type Taxonomy = 'legacy' | 'sub_asset_class' | 'sub_category';
+
 type Props = { rows: ManagerRow[] };
 
 const EM_REGIONS = ['GEM', 'Latam', 'Asia Pacific'] as const;
@@ -32,9 +38,9 @@ const EQUITY_REGIONS = [
   'Global',
 ] as const;
 
-// Display labels and order for FI sub-categories. Anything outside this list
+// Legacy FI sub-category display order + labels. Anything outside this list
 // (Money Market, Private Debt, Real Asset, Bank Loans, etc.) lumps into "Other".
-const FI_CATEGORY_ORDER = [
+const LEGACY_FI_ORDER = [
   'Investment Grade',
   'High Yield',
   'Mixed',
@@ -42,9 +48,8 @@ const FI_CATEGORY_ORDER = [
   'Convertible',
   'Other',
 ] as const;
-type FICategory = (typeof FI_CATEGORY_ORDER)[number];
 
-const CATEGORY_LABELS: Record<FICategory, string> = {
+const LEGACY_LABELS: Record<string, string> = {
   'Investment Grade': 'Inv. Grade',
   'High Yield': 'High Yield',
   Mixed: 'Mixed',
@@ -53,10 +58,17 @@ const CATEGORY_LABELS: Record<FICategory, string> = {
   Other: 'Other',
 };
 
-function mapCategory(raw: string | null): FICategory {
+// Category value for a row under the active taxonomy.
+function categoryOf(r: ManagerRow, tax: Taxonomy): string {
+  if (tax === 'sub_asset_class') return r.nt_sub_asset_class ?? 'n.a.';
+  if (tax === 'sub_category') return r.nt_sub_category ?? 'n.a.';
+  const raw = r.category;
   if (!raw) return 'Other';
-  if ((FI_CATEGORY_ORDER as readonly string[]).includes(raw)) return raw as FICategory;
-  return 'Other';
+  return (LEGACY_FI_ORDER as readonly string[]).includes(raw) ? raw : 'Other';
+}
+
+function labelOf(cat: string, tax: Taxonomy): string {
+  return tax === 'legacy' ? (LEGACY_LABELS[cat] ?? cat) : cat;
 }
 
 function isFixedIncomeRow(r: ManagerRow): boolean {
@@ -85,18 +97,20 @@ function equityRegion(region: string | null): string | null {
   return region;
 }
 
-// One cell value: sum for (manager, region, category).
-type Cell = { region: string; category: FICategory; usd: number };
 type ManagerAgg = {
   manager: string;
   active: number;
   passive: number;
   total: number;
-  // Indexed by `${region}|${category}` for FI; for Equity just `${region}` (category='Total').
+  // Indexed by `${region}|${category}` for FI; for Equity just `${region}`.
   cells: Map<string, number>;
 };
 
-function aggregateForSection(rows: ManagerRow[], section: Section): ManagerAgg[] {
+function aggregateForSection(
+  rows: ManagerRow[],
+  section: Section,
+  tax: Taxonomy,
+): ManagerAgg[] {
   const filter = (r: ManagerRow): { keep: boolean; region: string | null } => {
     if (section === 'em-fi')
       return {
@@ -126,7 +140,7 @@ function aggregateForSection(rows: ManagerRow[], section: Section): ManagerAgg[]
       const key = f.region;
       agg.cells.set(key, (agg.cells.get(key) ?? 0) + r.monto_usd_mm);
     } else {
-      const cat = mapCategory(r.category);
+      const cat = categoryOf(r, tax);
       const key = `${f.region}|${cat}`;
       agg.cells.set(key, (agg.cells.get(key) ?? 0) + r.monto_usd_mm);
     }
@@ -134,16 +148,17 @@ function aggregateForSection(rows: ManagerRow[], section: Section): ManagerAgg[]
   return Array.from(byManager.values()).sort((a, b) => b.total - a.total);
 }
 
-// For an FI section: per region, return only the FI categories that have any
+// For an FI section: per region, return only the categories that have any
 // non-zero value across all managers (matches PDF behavior of dropping empty cols).
 function computeFICategoriesByRegion(
   aggregated: ManagerAgg[],
   regions: readonly string[],
-): Map<string, FICategory[]> {
-  const out = new Map<string, FICategory[]>();
+  catOrder: readonly string[],
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
   for (const region of regions) {
-    const present: FICategory[] = [];
-    for (const cat of FI_CATEGORY_ORDER) {
+    const present: string[] = [];
+    for (const cat of catOrder) {
       const total = aggregated.reduce(
         (s, a) => s + (a.cells.get(`${region}|${cat}`) ?? 0),
         0,
@@ -157,26 +172,47 @@ function computeFICategoriesByRegion(
 
 export function ForeignManagersCard({ rows }: Props) {
   const [section, setSection] = useState<Section>('em-fi');
-
-  const aggregated = useMemo(() => aggregateForSection(rows, section), [rows, section]);
+  // New taxonomy (BD_Funds.xlsx) is the default view; legacy is one click away.
+  const [taxonomy, setTaxonomy] = useState<Taxonomy>('sub_category');
 
   const isEquity = section === 'equity';
+
+  const aggregated = useMemo(
+    () => aggregateForSection(rows, section, taxonomy),
+    [rows, section, taxonomy],
+  );
+
   const regions: readonly string[] =
     section === 'em-fi' ? EM_REGIONS : section === 'dm-fi' ? DM_REGIONS : EQUITY_REGIONS;
 
+  // Candidate category order for the FI columns. Legacy uses the fixed PDF list;
+  // the nt_ taxonomies derive the list from the data, ordered by total USD desc.
+  const catOrder: string[] = useMemo(() => {
+    if (taxonomy === 'legacy') return [...LEGACY_FI_ORDER];
+    const totals = new Map<string, number>();
+    for (const r of rows) {
+      if (!isFixedIncomeRow(r)) continue;
+      const cat = categoryOf(r, taxonomy);
+      totals.set(cat, (totals.get(cat) ?? 0) + r.monto_usd_mm);
+    }
+    return Array.from(totals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([c]) => c);
+  }, [rows, taxonomy]);
+
   // For FI: dynamic categories per region (matches PDF). For Equity: single col per region.
   const fiCatsByRegion = useMemo(
-    () => (isEquity ? null : computeFICategoriesByRegion(aggregated, regions)),
-    [aggregated, regions, isEquity],
+    () => (isEquity ? null : computeFICategoriesByRegion(aggregated, regions, catOrder)),
+    [aggregated, regions, isEquity, catOrder],
   );
 
   // For FI Total group, union of all FI cats present in any region.
-  const totalGroupCats: FICategory[] = useMemo(() => {
+  const totalGroupCats: string[] = useMemo(() => {
     if (isEquity || !fiCatsByRegion) return [];
-    const seen = new Set<FICategory>();
+    const seen = new Set<string>();
     for (const cats of fiCatsByRegion.values()) for (const c of cats) seen.add(c);
-    return FI_CATEGORY_ORDER.filter((c) => seen.has(c));
-  }, [fiCatsByRegion, isEquity]);
+    return catOrder.filter((c) => seen.has(c));
+  }, [fiCatsByRegion, isEquity, catOrder]);
 
   // Grand totals
   const grandTotal = aggregated.reduce((s, a) => s + a.total, 0);
@@ -194,7 +230,7 @@ export function ForeignManagersCard({ rows }: Props) {
   }
 
   // Sum for one (region, category) across all managers, used for TOTAL row.
-  function regionCatSum(region: string, cat: FICategory): number {
+  function regionCatSum(region: string, cat: string): number {
     return aggregated.reduce((s, a) => s + (a.cells.get(`${region}|${cat}`) ?? 0), 0);
   }
   function regionSum(region: string): number {
@@ -207,7 +243,7 @@ export function ForeignManagersCard({ rows }: Props) {
     );
   }
   // Sum across all regions for a single FI category (for the Total <em-dm> column group).
-  function totalGroupCatSum(cat: FICategory): number {
+  function totalGroupCatSum(cat: string): number {
     return regions.reduce((s, region) => s + regionCatSum(region, cat), 0);
   }
 
@@ -218,7 +254,7 @@ export function ForeignManagersCard({ rows }: Props) {
       0,
     );
   }
-  function managerTotalGroupCatSum(a: ManagerAgg, cat: FICategory): number {
+  function managerTotalGroupCatSum(a: ManagerAgg, cat: string): number {
     return regions.reduce((s, region) => s + (a.cells.get(`${region}|${cat}`) ?? 0), 0);
   }
 
@@ -232,6 +268,11 @@ export function ForeignManagersCard({ rows }: Props) {
     'dm-fi': 'Total Developed Markets',
     equity: 'Total',
   };
+  const taxonomyLabel: Record<Taxonomy, string> = {
+    legacy: 'category (legacy)',
+    sub_asset_class: 'Sub Asset Class',
+    sub_category: 'Sub-Category',
+  };
 
   return (
     <Card>
@@ -244,18 +285,37 @@ export function ForeignManagersCard({ rows }: Props) {
             <p className="text-[11px] text-muted-foreground mt-1">
               Foreign holdings aggregated by fund manager. Active/Passive split
               from <code>dim_bd_funds.style</code> (ETFs and index funds = Passive).
+              {!isEquity && (
+                <>
+                  {' '}FI columns grouped by <code>{taxonomyLabel[taxonomy]}</code>.
+                </>
+              )}
             </p>
           </div>
-          <SegmentedControl
-            ariaLabel="Section"
-            value={section}
-            onChange={setSection}
-            options={[
-              { value: 'em-fi' as Section, label: 'EM FI' },
-              { value: 'dm-fi' as Section, label: 'DM FI' },
-              { value: 'equity' as Section, label: 'Equity' },
-            ]}
-          />
+          <div className="flex items-center gap-2 flex-wrap">
+            {!isEquity && (
+              <SegmentedControl
+                ariaLabel="Taxonomy"
+                value={taxonomy}
+                onChange={setTaxonomy}
+                options={[
+                  { value: 'legacy' as Taxonomy, label: 'Legacy' },
+                  { value: 'sub_asset_class' as Taxonomy, label: 'Sub AC' },
+                  { value: 'sub_category' as Taxonomy, label: 'Sub Cat' },
+                ]}
+              />
+            )}
+            <SegmentedControl
+              ariaLabel="Section"
+              value={section}
+              onChange={setSection}
+              options={[
+                { value: 'em-fi' as Section, label: 'EM FI' },
+                { value: 'dm-fi' as Section, label: 'DM FI' },
+                { value: 'equity' as Section, label: 'Equity' },
+              ]}
+            />
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -304,7 +364,7 @@ export function ForeignManagersCard({ rows }: Props) {
                             key={`${region}-${c}`}
                             className="text-right text-[10px] border-l border-border/40"
                           >
-                            {CATEGORY_LABELS[c]}
+                            {labelOf(c, taxonomy)}
                           </TableHead>
                         ))}
                         <TableHead
@@ -321,7 +381,7 @@ export function ForeignManagersCard({ rows }: Props) {
                       key={`tot-${c}`}
                       className="text-right text-[10px] border-l border-border/40 bg-muted/20"
                     >
-                      {CATEGORY_LABELS[c]}
+                      {labelOf(c, taxonomy)}
                     </TableHead>
                   ))}
                   <TableHead

@@ -9,6 +9,9 @@ import {
 import type { OverviewRow } from '@/lib/dimensions';
 import { fmtPct, fmtUsdMM } from '@/lib/format';
 
+// Column order mirrors the PDF Summary table: NAV | Uncalled | Alternatives |
+// AUM | % AUM (alternatives share of the AFP's own AUM). % Share (share of
+// system alternatives) is dashboard-only.
 export function OverviewTable({ rows }: { rows: OverviewRow[] }) {
   const sys = rows.reduce(
     (acc, r) => ({
@@ -25,20 +28,18 @@ export function OverviewTable({ rows }: { rows: OverviewRow[] }) {
       <TableHeader>
         <TableRow>
           <TableHead>AFP</TableHead>
-          <TableHead className="text-right">AUM</TableHead>
           <TableHead className="text-right">NAV</TableHead>
-          <TableHead className="text-right">Uncalled</TableHead>
-          <TableHead className="text-right">Total</TableHead>
-          <TableHead className="text-right">% Total</TableHead>
+          <TableHead className="text-right">Uncalled Cap.</TableHead>
+          <TableHead className="text-right">Alternatives</TableHead>
+          <TableHead className="text-right">AUM</TableHead>
+          <TableHead className="text-right">% AUM</TableHead>
+          <TableHead className="text-right">% Share</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {rows.map((r) => (
           <TableRow key={r.afp}>
             <TableCell className="font-medium">{r.afp}</TableCell>
-            <TableCell className="text-right tabular-nums">
-              {fmtUsdMM(r.aum)}
-            </TableCell>
             <TableCell className="text-right tabular-nums">
               {fmtUsdMM(r.nav)}
             </TableCell>
@@ -48,6 +49,12 @@ export function OverviewTable({ rows }: { rows: OverviewRow[] }) {
             <TableCell className="text-right tabular-nums">
               {fmtUsdMM(r.total)}
             </TableCell>
+            <TableCell className="text-right tabular-nums">
+              {fmtUsdMM(r.aum)}
+            </TableCell>
+            <TableCell className="text-right tabular-nums">
+              {r.aum > 0 ? fmtPct(r.total / r.aum) : '—'}
+            </TableCell>
             <TableCell className="text-right tabular-nums text-muted-foreground">
               {sys.total > 0 ? fmtPct(r.total / sys.total) : '—'}
             </TableCell>
@@ -56,9 +63,6 @@ export function OverviewTable({ rows }: { rows: OverviewRow[] }) {
         <TableRow className="border-t-2 border-t-brand/60 bg-muted/40 font-semibold">
           <TableCell>SYSTEM</TableCell>
           <TableCell className="text-right tabular-nums">
-            {fmtUsdMM(sys.aum)}
-          </TableCell>
-          <TableCell className="text-right tabular-nums">
             {fmtUsdMM(sys.nav)}
           </TableCell>
           <TableCell className="text-right tabular-nums">
@@ -66,6 +70,12 @@ export function OverviewTable({ rows }: { rows: OverviewRow[] }) {
           </TableCell>
           <TableCell className="text-right tabular-nums">
             {fmtUsdMM(sys.total)}
+          </TableCell>
+          <TableCell className="text-right tabular-nums">
+            {fmtUsdMM(sys.aum)}
+          </TableCell>
+          <TableCell className="text-right tabular-nums">
+            {sys.aum > 0 ? fmtPct(sys.total / sys.aum) : '—'}
           </TableCell>
           <TableCell className="text-right tabular-nums">100.0%</TableCell>
         </TableRow>
