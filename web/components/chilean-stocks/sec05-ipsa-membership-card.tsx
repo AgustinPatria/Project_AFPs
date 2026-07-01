@@ -7,7 +7,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { SourceBadge } from '@/components/source-badge';
 import type { Sec05IpsaMembershipRow } from '@/lib/types-sec05';
 import type { Sec05ResolvedFechas } from '@/lib/queries-sec05';
 
@@ -40,10 +39,10 @@ export function Sec05IpsaMembershipCard({
           <TableHeader>
             <TableRow>
               <TableHead className="w-[18%]">Bucket</TableHead>
-              <ColHeader title="PIONERO" fecha={fechas.pionero} dataset="sec05_pionero_benchmark" />
-              <ColHeader title="MRV" fecha={fechas.mrv} dataset="sec05_mrv_benchmark" />
-              <ColHeader title="IPSA" fecha={fechas.ipsa} dataset="sec05_ipsa_composition" />
-              <ColHeader title="AFPs" fecha={fechas.afps} dataset="sec01_market_share" />
+              <ColHeader title="PIONERO" fecha={fechas.pionero} />
+              <ColHeader title="MRV" fecha={fechas.mrv} />
+              <ColHeader title="IPSA" fecha={fechas.ipsa} />
+              <ColHeader title="AFPs" fecha={fechas.afps} />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -63,13 +62,10 @@ export function Sec05IpsaMembershipCard({
   );
 }
 
-function ColHeader({ title, fecha, dataset }: { title: string; fecha: string | null; dataset: string }) {
+function ColHeader({ title, fecha }: { title: string; fecha: string | null }) {
   return (
     <TableHead className="text-right">
-      <div className="flex items-center justify-end gap-1.5">
-        {title}
-        <SourceBadge dataset={dataset} />
-      </div>
+      <div className="flex items-center justify-end gap-1.5">{title}</div>
       <div className="text-[9px] font-mono text-muted-foreground mt-0.5">{fmtMonYY(fecha)}</div>
     </TableHead>
   );

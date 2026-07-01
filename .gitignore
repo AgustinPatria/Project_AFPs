@@ -68,3 +68,8 @@ UsersaunanueInternship*.png
 _vba_dumps/
 _vba_dumps_decoded/
 BD_Funds_diff.csv
+
+# graphify knowledge-graph output (generated cache)
+graphify-out/
+lineage.html
+lineage-interactive.html

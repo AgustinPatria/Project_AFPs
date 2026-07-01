@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import {
   Table,
   TableBody,
@@ -12,7 +12,8 @@ import {
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { fmtPct, fmtUsdMM } from '@/lib/format';
 import {
-  AC_CATEGORIES,
+  AC_GRAND_TOTAL,
+  AC_GROUPS,
   AC_OWUW_CATEGORIES,
   AC_SUBTOTALS,
   AFPS_AC,
@@ -73,6 +74,23 @@ export function AssetClassMatrix({
         ? fmtUsdMM(v)
         : fmtPct(v);
 
+  // Numeric cells (per-column + TOTAL) for a category row.
+  const dataCells = (cat: AcCategory) => {
+    const row = matrix.get(cat) ?? {};
+    return (
+      <>
+        {cols.map((c) => (
+          <TableCell key={c} className="text-right tabular-nums">
+            {fmt(row[c])}
+          </TableCell>
+        ))}
+        <TableCell className="text-right tabular-nums font-medium">
+          {fmt(row['TOTAL'])}
+        </TableCell>
+      </>
+    );
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -109,31 +127,37 @@ export function AssetClassMatrix({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {AC_CATEGORIES.map((cat) => {
-            const row = matrix.get(cat) ?? {};
-            const isSubtotal = AC_SUBTOTALS.has(cat);
-            return (
-              <TableRow
-                key={cat}
-                className={cn(
-                  isSubtotal && 'border-t font-medium bg-muted/30',
-                  cat === 'Total Assets' && 'border-t-2 border-t-brand/60 bg-muted/40 font-semibold',
-                )}
-              >
-                <TableCell className={cn('font-medium', isSubtotal && 'pl-3')}>
-                  {cat}
-                </TableCell>
-                {cols.map((c) => (
-                  <TableCell key={c} className="text-right tabular-nums">
-                    {fmt(row[c])}
-                  </TableCell>
-                ))}
-                <TableCell className="text-right tabular-nums font-medium">
-                  {fmt(row['TOTAL'])}
+          {AC_GROUPS.map((group) => (
+            <Fragment key={group.label}>
+              <TableRow className="bg-muted/20 hover:bg-muted/20">
+                <TableCell
+                  colSpan={cols.length + 2}
+                  className="py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+                >
+                  {group.label}
                 </TableCell>
               </TableRow>
-            );
-          })}
+              {group.rows.map(({ cat, label }) => (
+                <TableRow key={cat}>
+                  <TableCell className="pl-5 font-medium">{label}</TableCell>
+                  {dataCells(cat)}
+                </TableRow>
+              ))}
+              {group.subtotal && (
+                <TableRow className="border-t font-medium bg-muted/30">
+                  <TableCell className="pl-3 font-medium">
+                    {group.subtotal}
+                  </TableCell>
+                  {dataCells(group.subtotal)}
+                </TableRow>
+              )}
+            </Fragment>
+          ))}
+          {/* Grand total — highlighted distinctly from the per-class subtotals. */}
+          <TableRow className="border-t-2 border-t-brand/60 bg-muted/40 font-semibold">
+            <TableCell>{AC_GRAND_TOTAL}</TableCell>
+            {dataCells(AC_GRAND_TOTAL)}
+          </TableRow>
         </TableBody>
       </Table>
 
@@ -197,9 +221,15 @@ function OwUwHeatmap({
         <TableBody>
           {AC_OWUW_CATEGORIES.map((cat) => {
             const row = cells.get(cat) ?? {};
+            const isSubtotal = AC_SUBTOTALS.has(cat);
             return (
-              <TableRow key={cat}>
-                <TableCell className="font-medium">{cat}</TableCell>
+              <TableRow
+                key={cat}
+                className={cn(isSubtotal && 'border-t font-medium bg-muted/30')}
+              >
+                <TableCell className={cn('font-medium', isSubtotal && 'pl-3')}>
+                  {cat}
+                </TableCell>
                 {AFPS_AC.map((afp) => {
                   const v = row[afp] ?? null;
                   return (

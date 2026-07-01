@@ -70,6 +70,8 @@ export async function getForeignSummary(
  */
 function priorBaselines(fecha: string): {
   mom: string;
+  threeM: string;
+  sixM: string;
   ytd: string;
   ltm: string;
   threeY: string;
@@ -79,6 +81,8 @@ function priorBaselines(fecha: string): {
     new Date(Date.UTC(year, month1Indexed, 0)).toISOString().slice(0, 10);
   return {
     mom: lastDayOfMonth(y, m - 1),    // last day of prior month
+    threeM: lastDayOfMonth(y, m - 3), // same month-end, 3m back
+    sixM: lastDayOfMonth(y, m - 6),   // same month-end, 6m back
     ytd: `${y - 1}-12-31`,            // Dec of prior calendar year
     ltm: lastDayOfMonth(y - 1, m),    // same month-end, 12m back
     threeY: lastDayOfMonth(y - 3, m), // same month-end, 36m back
@@ -98,32 +102,49 @@ export async function getForeignChanges(
 ): Promise<{
   fechaEnd: string;
   fechaMomStart: string;
+  fechaThreeMStart: string;
+  fechaSixMStart: string;
   fechaYtdStart: string;
   fechaLtmStart: string;
   fechaThreeYStart: string;
   endRows: ForeignSummaryRow[];
   momStartRows: ForeignSummaryRow[];
+  threeMStartRows: ForeignSummaryRow[];
+  sixMStartRows: ForeignSummaryRow[];
   ytdStartRows: ForeignSummaryRow[];
   ltmStartRows: ForeignSummaryRow[];
   threeYStartRows: ForeignSummaryRow[];
 }> {
-  const { mom, ytd, ltm, threeY } = priorBaselines(fecha);
-  const [endRows, momStartRows, ytdStartRows, ltmStartRows, threeYStartRows] =
-    await Promise.all([
-      getForeignSummary(fecha, taxonomy),
-      getForeignSummary(mom, taxonomy),
-      getForeignSummary(ytd, taxonomy),
-      getForeignSummary(ltm, taxonomy),
-      getForeignSummary(threeY, taxonomy),
-    ]);
+  const { mom, threeM, sixM, ytd, ltm, threeY } = priorBaselines(fecha);
+  const [
+    endRows,
+    momStartRows,
+    threeMStartRows,
+    sixMStartRows,
+    ytdStartRows,
+    ltmStartRows,
+    threeYStartRows,
+  ] = await Promise.all([
+    getForeignSummary(fecha, taxonomy),
+    getForeignSummary(mom, taxonomy),
+    getForeignSummary(threeM, taxonomy),
+    getForeignSummary(sixM, taxonomy),
+    getForeignSummary(ytd, taxonomy),
+    getForeignSummary(ltm, taxonomy),
+    getForeignSummary(threeY, taxonomy),
+  ]);
   return {
     fechaEnd: fecha,
     fechaMomStart: mom,
+    fechaThreeMStart: threeM,
+    fechaSixMStart: sixM,
     fechaYtdStart: ytd,
     fechaLtmStart: ltm,
     fechaThreeYStart: threeY,
     endRows,
     momStartRows,
+    threeMStartRows,
+    sixMStartRows,
     ytdStartRows,
     ltmStartRows,
     threeYStartRows,
@@ -139,10 +160,13 @@ export async function getForeignChanges(
 // total return; flow = position change − return. Scope is Equity / Fixed
 // Income / Private Equity (Direct Investment excluded, as in the PDF). Window
 // aggregates are sums of the monthly splits, so a window is only fully split
-// when every month inside it has returns data (available Feb-2025 onwards).
+// when every month inside it has returns data; each window's covered/missing
+// months are computed dynamically from the Bloomberg returns series.
 
 export type ForeignChangesSplits = {
   mom: ForeignSplit;
+  threeM: ForeignSplit;
+  sixM: ForeignSplit;
   ytd: ForeignSplit;
   ltm: ForeignSplit;
   threeY: ForeignSplit;
@@ -221,7 +245,7 @@ export async function getForeignChangesSplits(
   fecha: string,
   taxonomy: ForeignTaxonomy = 'nt',
 ): Promise<ForeignChangesSplits> {
-  const { mom, ytd, ltm, threeY } = priorBaselines(fecha);
+  const { mom, threeM, sixM, ytd, ltm, threeY } = priorBaselines(fecha);
   const raw: SplitRaw[] = [];
   const PAGE = 1000;
   let offset = 0;
@@ -256,6 +280,8 @@ export async function getForeignChangesSplits(
   }
   return {
     mom: buildSplit(raw, mom, fecha, taxonomy),
+    threeM: buildSplit(raw, threeM, fecha, taxonomy),
+    sixM: buildSplit(raw, sixM, fecha, taxonomy),
     ytd: buildSplit(raw, ytd, fecha, taxonomy),
     ltm: buildSplit(raw, ltm, fecha, taxonomy),
     threeY: buildSplit(raw, threeY, fecha, taxonomy),
@@ -301,7 +327,8 @@ function topSplit(
  * `fecha` (PDF Sec 08). Monthly = the fund flows of `fecha`; YTD = sum of
  * monthly fund flows in the calendar year up to `fecha`. Returns empty
  * buckets when no months in the window have Bloomberg returns (e.g. the
- * latest fecha before its returns arrive, or fechas before Feb-25).
+ * latest fecha before its returns arrive, or fechas before the Bloomberg
+ * returns series begins).
  */
 export async function getForeignTopFlows(
   fecha: string,

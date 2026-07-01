@@ -2,7 +2,7 @@ export const revalidate = 3600;
 
 import { ChileanStocksGicsCard } from '@/components/chilean-stocks/chilean-stocks-gics-card';
 import { ChileanStocksTransactionsCard } from '@/components/chilean-stocks/chilean-stocks-transactions-card';
-import { Sec05QuartileCard } from '@/components/chilean-stocks/sec05-quartile-card';
+import { Sec05SizeCard } from '@/components/chilean-stocks/sec05-size-card';
 import { Sec05IpsaMembershipCard } from '@/components/chilean-stocks/sec05-ipsa-membership-card';
 import { Sec05ConcentrationCard } from '@/components/chilean-stocks/sec05-concentration-card';
 import { Sec05Top40Card } from '@/components/chilean-stocks/sec05-top40-card';
@@ -14,7 +14,7 @@ import {
   getChileanStocksTopFlows,
 } from '@/lib/queries-chilean-stocks';
 import {
-  getSec05QuartileBreakdown,
+  getSec05SizeBreakdown,
   getSec05IpsaMembership,
   getSec05Concentration,
   getSec05Top40,
@@ -48,7 +48,7 @@ export default async function Page({
   const [
     topFlows,
     gicsBreakdown,
-    quartile,
+    sizeBreakdown,
     ipsaMembership,
     concentration,
     top40,
@@ -56,7 +56,7 @@ export default async function Page({
   ] = await Promise.all([
     getChileanStocksTopFlows(fecha),
     getChileanStocksGicsBreakdown(fecha),
-    getSec05QuartileBreakdown(fecha),
+    getSec05SizeBreakdown(fecha),
     getSec05IpsaMembership(fecha),
     getSec05Concentration(fecha),
     getSec05Top40(fecha),
@@ -78,9 +78,12 @@ export default async function Page({
         <AsOfBadge module="chilean_stocks" source="Pionero/MRV (IPD)" />
       </div>
 
+      {/* Sec05 sobre SQL vivo (2026-07-01): Pionero/MRV = TBL_IPA_V2 type=2,
+          índices/size = TBL_BMS_Exposicion (IGPA L/M/S + IPSA), AFPs = CHIST.
+          Cuartiles reemplazados por size. Sin seeds JSON. */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Sec05QuartileCard
-          rows={quartile}
+        <Sec05SizeCard
+          rows={sizeBreakdown}
           fechas={resolvedFechas}
           targetFecha={fecha}
         />

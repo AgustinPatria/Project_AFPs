@@ -3,6 +3,7 @@ import type {
   AssetClassByAfpRow,
   AssetClassByTipoRow,
   AssetClassEvolutionRow,
+  AssetClassEvolutionByAfpRow,
   LocalFiRow,
 } from './types-asset-allocation';
 
@@ -122,10 +123,47 @@ export async function getAssetClassEvolution(): Promise<
   return rows;
 }
 
+/**
+ * Monthly evolution of asset allocation per AFP (all-funds, tipo_fondo='TOTAL'),
+ * including afp='TOTAL' = system. Feeds the AFP selector on the over-time chart.
+ * Same pagination concern as getAssetClassEvolution (8 afps × ~13 cats × months).
+ */
+export async function getAssetClassEvolutionByAfp(): Promise<
+  AssetClassEvolutionByAfpRow[]
+> {
+  const rows: AssetClassEvolutionByAfpRow[] = [];
+  let offset = 0;
+  const PAGE = 1000;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { data, error } = await supabase
+      .from('v_asset_class_afp_sd')
+      .select('fecha_valor,afp_nombre,pdf_category,monto_dolares')
+      .eq('tipo_fondo', 'TOTAL')
+      .order('fecha_valor', { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    for (const r of data) {
+      if (r.monto_dolares == null) continue;
+      rows.push({
+        fecha: r.fecha_valor as string,
+        afp: r.afp_nombre as string,
+        pdf_category: r.pdf_category as string,
+        monto_dolares: Number(r.monto_dolares),
+      });
+    }
+    if (data.length < PAGE) break;
+    offset += PAGE;
+  }
+  return rows;
+}
+
 export type {
   AssetClassByAfpRow,
   AssetClassByTipoRow,
   AssetClassEvolutionRow,
+  AssetClassEvolutionByAfpRow,
   LocalFiRow,
 } from './types-asset-allocation';
 export {

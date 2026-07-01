@@ -363,6 +363,9 @@ def sync_bd_instrumentos(ms, sb):
 # =============================================================
 
 def sync_ipa(ms, sb):
+    # OBSOLETO 2026-07-01: ipd_positions fue dropeada de Supabase. Pionero/MRV
+    # (Sec05) ahora salen de TBL_IPA_V2 via sync/sync_ipd_strategy.py
+    # (ipd_cartera_eom). Esta funcion queda solo como referencia historica.
     print("\n[C] ipd_positions (extract.IPA)")
     df = timed_read('IPA', ms, """
         SELECT
@@ -513,7 +516,7 @@ def main():
     sync_jpm_cembi_metrics(ms, sb)
     sync_risk_america_metrics(ms, sb)
     sync_cubo_final(ms, sb)
-    sync_ipa(ms, sb)  # last, most rows
+    # sync_ipa(ms, sb)  # OBSOLETO: ipd_positions dropeada; ver sync_ipd_strategy.py
 
     print(f"\nTotal: {time()-t0:.1f}s")
 

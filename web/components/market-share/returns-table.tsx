@@ -10,10 +10,19 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { SegmentedControl } from '@/components/ui/segmented-control';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { fmtSignedPct } from '@/lib/format';
 import {
   type CalendarYearReturns,
+  type CuotaPoint,
   type ReturnsRow,
+  customRangeReturns,
   pivotByAfp,
 } from '@/lib/types-market-share';
 import { cn } from '@/lib/utils';
@@ -22,7 +31,7 @@ const TIPO_COLS = ['A', 'B', 'C', 'D', 'E'] as const;
 
 type Window = 'mom' | 'ytd' | 'ltm';
 type Currency = 'clp' | 'usd';
-type Tab = Window | `cy-${number}`;
+type Tab = Window | 'custom' | `cy-${number}`;
 
 const WINDOW_LABEL: Record<Window, string> = {
   mom: 'Monthly',
@@ -50,14 +59,27 @@ function heatmapBg(t: number): string {
 export function ReturnsTable({
   rows,
   calendarYears = [],
+  cuotaSeries = [],
 }: {
   rows: ReturnsRow[];
   calendarYears?: CalendarYearReturns[];
+  cuotaSeries?: CuotaPoint[];
 }) {
+  const allDates = useMemo(
+    () => [...new Set(cuotaSeries.map((r) => r.fecha))].sort(),
+    [cuotaSeries],
+  );
   const [tab, setTab] = useState<Tab>('mom');
   const [ccy, setCcy] = useState<Currency>('clp');
+  const [customEnd, setCustomEnd] = useState<string>(
+    () => allDates[allDates.length - 1] ?? '',
+  );
+  const [customStart, setCustomStart] = useState<string>(
+    () => allDates[Math.max(0, allDates.length - 13)] ?? '',
+  );
 
   const isCY = tab.startsWith('cy-');
+  const isCustom = tab === 'custom';
   const activeRows = isCY
     ? calendarYears.find((c) => `cy-${c.year}` === tab)?.rows ?? []
     : rows;
@@ -65,8 +87,21 @@ export function ReturnsTable({
   const valueKey = (isCY
     ? `ret_ytd_${ccy}`
     : `ret_${tab}_${ccy}`) as keyof ReturnsRow;
-  const pivoted = pivotByAfp(activeRows, valueKey);
-  const tabLabel = isCY ? tab.slice(3) : WINDOW_LABEL[tab as Window];
+  const pivoted = useMemo(
+    () =>
+      isCustom
+        ? pivotByAfp(
+            customRangeReturns(cuotaSeries, customStart, customEnd, ccy),
+            'ret_custom',
+          )
+        : pivotByAfp(activeRows, valueKey),
+    [isCustom, cuotaSeries, customStart, customEnd, ccy, activeRows, valueKey],
+  );
+  const tabLabel = isCustom
+    ? `${customStart} → ${customEnd}`
+    : isCY
+      ? tab.slice(3)
+      : WINDOW_LABEL[tab as Window];
 
   const colExtents = useMemo(() => {
     const ext: Record<string, { lo: number; hi: number }> = {};
@@ -118,6 +153,9 @@ export function ReturnsTable({
                 value: `cy-${c.year}` as Tab,
                 label: String(c.year),
               })),
+              ...(allDates.length > 0
+                ? [{ value: 'custom' as Tab, label: 'Custom' }]
+                : []),
             ]}
           />
           <SegmentedControl
@@ -131,7 +169,55 @@ export function ReturnsTable({
           />
         </div>
       </div>
-      <Table>
+      {isCustom && (
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          <span className="text-muted-foreground">From</span>
+          <Select
+            value={customStart}
+            onValueChange={(v) => setCustomStart(v ?? customStart)}
+          >
+            <SelectTrigger
+              className="w-[130px] tabular-nums"
+              aria-label="Start date"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[...allDates].reverse().map((d) => (
+                <SelectItem key={d} value={d} className="tabular-nums">
+                  {d}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-muted-foreground">to</span>
+          <Select
+            value={customEnd}
+            onValueChange={(v) => setCustomEnd(v ?? customEnd)}
+          >
+            <SelectTrigger
+              className="w-[130px] tabular-nums"
+              aria-label="End date"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[...allDates].reverse().map((d) => (
+                <SelectItem key={d} value={d} className="tabular-nums">
+                  {d}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      <Table className="table-fixed">
+        <colgroup>
+          <col className="w-[20%]" />
+          {TIPO_COLS.map((t) => (
+            <col key={t} className="w-[16%]" />
+          ))}
+        </colgroup>
         <TableHeader>
           <TableRow>
             <TableHead>AFP</TableHead>

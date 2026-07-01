@@ -34,8 +34,8 @@ export function ForeignTopFlowsCard({ mom, ytd, momPeriod, ytdPeriod }: Props) {
               Net flow per fund = position change − return, using Bloomberg
               monthly USD total returns per ISIN (the exact PDF Sec 08
               methodology), with share classes consolidated per fund. YTD is
-              the sum of monthly flows over months with returns data (from
-              Feb-25). Validated vs the Mar-26 PDF: top-10 outflows match to
+              the sum of monthly flows over the months with Bloomberg returns
+              data. Validated vs the Mar-26 PDF: top-10 outflows match to
               the decimal. <strong>Inflows may surface funds the PDF
               omits</strong> — the legacy flows matrix silently truncates the
               last ~120 instruments of its classification sheet; this view
@@ -57,8 +57,8 @@ export function ForeignTopFlowsCard({ mom, ytd, momPeriod, ytdPeriod }: Props) {
         {!hasData ? (
           <p className="text-xs text-muted-foreground">
             No flows for this period yet — Bloomberg returns for the month have
-            not been synced (flows are available from Feb-25 up to the latest
-            month with returns data). Select an earlier date.
+            not been synced (flows are available for the months with Bloomberg
+            returns data). Select an earlier date.
           </p>
         ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">

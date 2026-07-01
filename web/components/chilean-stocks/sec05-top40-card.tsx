@@ -7,24 +7,21 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { SourceBadge } from '@/components/source-badge';
 import { cn } from '@/lib/utils';
 import type { Sec05Top40Row } from '@/lib/types-sec05';
 
-const CUARTIL_TONE: Record<string, string> = {
-  '1': 'bg-emerald-500/15 text-emerald-400',
-  '2': 'bg-sky-500/15 text-sky-400',
-  '3': 'bg-amber-500/15 text-amber-400',
-  '4': 'bg-orange-500/15 text-orange-400',
-  Other: 'bg-muted text-muted-foreground',
+const SIZE_TONE: Record<string, string> = {
+  Large: 'bg-emerald-500/15 text-emerald-400',
+  Mid: 'bg-sky-500/15 text-sky-400',
+  Small: 'bg-amber-500/15 text-amber-400',
+  'No IGPA': 'bg-muted text-muted-foreground',
 };
 
 export function Sec05Top40Card({ rows }: { rows: Sec05Top40Row[] }) {
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between">
+      <CardHeader>
         <CardTitle className="text-base">Top 40 Chilean Companies — AFPs</CardTitle>
-        <SourceBadge dataset="sec01_market_share" />
       </CardHeader>
       <CardContent className="pt-0">
         <Table>
@@ -33,7 +30,7 @@ export function Sec05Top40Card({ rows }: { rows: Sec05Top40Row[] }) {
               <TableHead className="w-[40px]">#</TableHead>
               <TableHead>Company</TableHead>
               <TableHead>GICS</TableHead>
-              <TableHead className="w-[80px]">Cuartil</TableHead>
+              <TableHead className="w-[80px]">Size</TableHead>
               <TableHead className="text-right">USD MM</TableHead>
               <TableHead className="text-right w-[80px]">Weight</TableHead>
             </TableRow>
@@ -50,14 +47,14 @@ export function Sec05Top40Card({ rows }: { rows: Sec05Top40Row[] }) {
                   {r.gics_name ?? r.gics_chist ?? '—'}
                 </TableCell>
                 <TableCell>
-                  {r.cuartil ? (
+                  {r.size_bucket ? (
                     <span
                       className={cn(
                         'inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono uppercase rounded',
-                        CUARTIL_TONE[r.cuartil],
+                        SIZE_TONE[r.size_bucket],
                       )}
                     >
-                      {r.cuartil === 'Other' ? 'Other' : `Q${r.cuartil}`}
+                      {r.size_bucket}
                     </span>
                   ) : (
                     <span className="text-muted-foreground">—</span>

@@ -11,7 +11,12 @@ import { OverviewTable } from '@/components/overview-table';
 import { PageHeader } from '@/components/page-header';
 import { AsOfBadge } from '@/components/as-of-badge';
 import { TotalEvolutionChart } from '@/components/total-evolution-chart';
-import { getAvailableDates, getEvolution, getOverview } from '@/lib/queries';
+import {
+  getAvailableDates,
+  getEvolution,
+  getOverview,
+  getOverviewDetail,
+} from '@/lib/queries';
 import {
   getAfpDetail,
   getNavUncalledEvolution,
@@ -30,7 +35,7 @@ import {
   type AfpDetailSeries,
   type AfpOrSystem,
 } from '@/lib/types-alternatives';
-import type { OverviewRow } from '@/lib/dimensions';
+import type { MultifondoRow, OverviewRow } from '@/lib/dimensions';
 
 const TABS = [
   { id: 'summary', label: 'Summary' },
@@ -103,12 +108,22 @@ export default async function Page({
   const prevFecha = idx >= 0 && idx + 1 < dates.length ? dates[idx + 1] : null;
 
   // Fetch only what the active tab renders (same pattern as /foreign).
-  const [overview, prevOverview, evolution, totalC1, navUncalled, detail] =
-    await Promise.all([
+  const [
+    overview,
+    prevOverview,
+    overviewDetail,
+    evolution,
+    totalC1,
+    navUncalled,
+    detail,
+  ] = await Promise.all([
       tab === 'summary' ? getOverview(fecha) : Promise.resolve<OverviewRow[]>([]),
       tab === 'summary' && prevFecha
         ? getOverview(prevFecha)
         : Promise.resolve<OverviewRow[]>([]),
+      tab === 'summary'
+        ? getOverviewDetail(fecha)
+        : Promise.resolve<Record<string, MultifondoRow[]>>({}),
       tab === 'summary' || tab === 'evolution'
         ? getEvolution()
         : Promise.resolve({ totals: [], aums: [] }),
@@ -167,7 +182,7 @@ export default async function Page({
           </section>
 
           <ChartCard title={`Summary by AFP (${fecha})`}>
-            <OverviewTable rows={overview} />
+            <OverviewTable rows={overview} detail={overviewDetail} />
           </ChartCard>
 
           <ChartCard title="Alternative Assets Evolution">

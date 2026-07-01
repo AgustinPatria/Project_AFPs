@@ -14,14 +14,27 @@ import {
   StrategyTimeSeriesChart,
 } from '@/components/strategy/strategy-charts';
 import { StrategyFamilySelector } from '@/components/strategy/strategy-family-selector';
+import { StrategyAfpOwUwTable } from '@/components/strategy/afp-ow-uw-table';
+import {
+  CarteraCard,
+  ContributorsCard,
+  ReturnsAumCard,
+} from '@/components/strategy/attribution-cards';
 import { fmtUsdMM } from '@/lib/format';
 import {
   getLocalEquityHistory,
+  getStrategyAfpOwUw,
   getStrategyDates,
   getStrategyDetail,
   getStrategyFamilies,
   type LocalEquityPoint,
 } from '@/lib/queries-strategy';
+import {
+  getFundAttribution,
+  getFundCartera,
+  getFundReturns,
+  getStrategyIpdFunds,
+} from '@/lib/queries-strategy-attribution';
 
 const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function fmtMonYY(periodo: string): string {
@@ -154,6 +167,25 @@ export default async function Page({
   const dateStrings = periodos.map(periodoToDateStr);
   const currentFecha = periodoToDateStr(periodo);
 
+  // 1.4 — per-AFP over/underweight in this family's Moneda funds (CHIST, lagged).
+  const afpOwUw = await getStrategyAfpOwUw(family_id);
+
+  // 4.1/4.2 — cartera + return contributors + return/AUM per Moneda fund
+  // (dim_strategy_ipd_funds; family 9 CLO has no positions in IPD yet).
+  const ipdFunds = await getStrategyIpdFunds(family_id);
+  const fundBlocks = (
+    await Promise.all(
+      ipdFunds.map(async (fund) => {
+        const [attribution, cartera, returns] = await Promise.all([
+          getFundAttribution(fund.id_fund),
+          getFundCartera(fund.id_fund),
+          fund.rent_id_fund ? getFundReturns(fund.rent_id_fund) : Promise.resolve(null),
+        ]);
+        return { fund, attribution, cartera, returns };
+      }),
+    )
+  ).filter((b) => b.attribution || b.cartera || b.returns);
+
   return (
     <main className="p-6 lg:p-8 space-y-6">
       <PageHeader
@@ -193,6 +225,28 @@ export default async function Page({
         </CardContent>
       </Card>
 
+      {afpOwUw && afpOwUw.rows.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-start justify-between gap-2 flex-wrap">
+              <CardTitle className="text-sm font-medium">
+                Positioning by AFP — {detail.family.family_name}
+              </CardTitle>
+              {/* Per-card vintage: this card is CHIST (lagged), unlike the
+                  fresh SP market share above — surface it so the page's mixed
+                  as-of dates are explicit rather than hidden in the footnote. */}
+              <AsOfBadge module="strategy" source="Posicionamiento AFP (CHIST)" />
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Over / underweight in our Moneda funds vs the system average
+            </p>
+          </CardHeader>
+          <CardContent>
+            <StrategyAfpOwUwTable rows={afpOwUw.rows} fecha={afpOwUw.fecha} />
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium">Evolution</CardTitle>
@@ -201,6 +255,65 @@ export default async function Page({
           <StrategyTimeSeriesChart series={detail.timeSeries} />
         </CardContent>
       </Card>
+
+      {/* 4.1 / 4.2 — per Moneda fund: contributors, return/AUM, cartera.
+          Data straight from Inteligencia_Producto (daily Geneva positions,
+          aggregated monthly at sync time) — fresher than the SP world above. */}
+      {fundBlocks.map(({ fund, attribution, cartera, returns }) => (
+        <section key={fund.id_fund} className="space-y-6">
+          {attribution && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <CardTitle className="text-sm font-medium">
+                    Return contributors — {fund.fund_label}
+                  </CardTitle>
+                  <AsOfBadge module="strategy" source="Atribución Moneda (IPD)" />
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Top contributors / detractors, Price + FX/carry breakdown
+                </p>
+              </CardHeader>
+              <CardContent>
+                <ContributorsCard
+                  month={attribution.month}
+                  quarter={attribution.quarter}
+                />
+              </CardContent>
+            </Card>
+          )}
+
+          {returns && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">
+                  Return vs AUM — {fund.fund_label}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ReturnsAumCard returns={returns} />
+              </CardContent>
+            </Card>
+          )}
+
+          {cartera && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">
+                  Portfolio — {fund.fund_label}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CarteraCard
+                  fecha={cartera.fecha}
+                  navUsd={cartera.nav_usd}
+                  rows={cartera.rows}
+                />
+              </CardContent>
+            </Card>
+          )}
+        </section>
+      ))}
     </main>
   );
 }

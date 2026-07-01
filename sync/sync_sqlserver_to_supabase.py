@@ -244,7 +244,7 @@ def sync_dim_bd_funds(ms_engine, client, args):
     print("[dim] dim_bd_funds (universo completo)")
     query = """
         SELECT
-            [ID] AS id, [RUN_TICKER] AS run_ticker, [Fondo] AS fondo,
+            [ID] AS id, [RUN_TICKER] AS run_ticker, [Fund] AS fondo,
             [Manager] AS manager, [Type] AS type, [Style] AS style,
             [Asset_Class] AS asset_class, [Category] AS category,
             [Region] AS region, [Alt_Fund_Type] AS alt_fund_type,
@@ -430,7 +430,14 @@ def sync_valores_cuota_patrimonio(ms_engine, client, args):
     where = f"Fecha >= '{start}'"
     if end:
         where += f" AND Fecha <= '{end}'"
+    # Piso fijo 2020+: AFP_CL_VC_PAT tiene historia desde 2002, pero el dashboard
+    # solo usa 2020+. Garantiza la ventana aunque se pase un --start anterior.
+    where += " AND Fecha >= '2020-01-01'"
 
+    # Re-origen 2026-06-25 (modelo SQL fuente unica): la fuente pasa de
+    # TBL_SPE_VALORESCUOTAPATRIMONIO a AFP_CL_VC_PAT. Mismo esquema/naming y valores
+    # identicos (verificado: valor_cuota/valor_patrimonio calzan exacto); AFP_CL_VC_PAT
+    # tiene mas historia (2002+). Columnas de origen con el mismo nombre.
     query = f"""
         SELECT
             CAST(Fecha AS DATE) AS fecha,
@@ -438,7 +445,7 @@ def sync_valores_cuota_patrimonio(ms_engine, client, args):
             AFP AS afp,
             Valor_Cuota AS valor_cuota,
             Valor_Patrimonio AS valor_patrimonio
-        FROM Inteligencia_Mercado.dbo.TBL_SPE_VALORESCUOTAPATRIMONIO
+        FROM Inteligencia_Mercado.dbo.AFP_CL_VC_PAT
         WHERE {where}
     """
     df = timed_read('valores_cuota_patrimonio', ms_engine, query)
@@ -507,7 +514,7 @@ def sync_historial_carteras(ms_engine, client, args):
 def print_summary(client):
     print("\n--- Resumen Supabase ---")
     tables = [
-        ('historial_carteras', 'fecha_reporte'),
+        # ('historial_carteras', 'fecha_reporte'),  # RETIRADA 2026-06-26 (dropeada; ver main)
         ('valores_cuota_patrimonio', 'fecha'),
         ('tipo_cambio', 'fecha'),
         ('dim_afp_equivalencias', None),
@@ -593,9 +600,20 @@ def main():
         # Raw (con rango)
         sync_tipo_cambio(ms_engine, client, args)
         sync_valores_cuota_patrimonio(ms_engine, client, args)
-        sync_historial_carteras(ms_engine, client, args)
+        # historial_carteras RETIRADA 2026-06-26 (dropeada de Supabase, −13 MB). El
+        # dashboard de Alternatives ahora lee chist_adjusted (sync/sync_chist_adjusted.py).
+        # La función sync_historial_carteras() y su entry en RAW_TABLES quedan por si se
+        # quiere recrear, pero NO se invoca (escribiría a una tabla inexistente).
+        # sync_historial_carteras(ms_engine, client, args)
 
         print_summary(client)
+
+        # tipo_cambio / VC_PAT (+ BD dims) feed mv_aum and mv_chist_aa, the snapshots
+        # behind v_aum / v_total / v_nav / v_uncalled. Refresh them so the dashboard
+        # reflects this sync instead of a stale snapshot.
+        print("\nRefrescando matviews del dashboard (mv_chist_aa, mv_aum)...")
+        client.rpc('refresh_alternatives_matviews').execute()
+        print("  -> matviews refrescados")
     except Exception as e:
         print(f"\n[ERROR] {e}", file=sys.stderr)
         raise

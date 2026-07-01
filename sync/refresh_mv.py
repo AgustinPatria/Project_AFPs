@@ -1,10 +1,20 @@
-"""One-off REFRESH MATERIALIZED VIEW. Uses Supabase REST RPC fallback via
-psycopg-style call — but since we can't easily run DDL over REST, we POST
-directly to the supabase-py service and rely on a longer timeout.
+"""Refresh the dashboard materialized views via the refresh_alternatives_matviews()
+RPC. PostgREST can't run REFRESH MATERIALIZED VIEW directly, so the DDL lives in a
+SECURITY DEFINER function exposed as an RPC (migration refresh_alternatives_matviews_rpc).
+
+Currently refreshes: mv_chist_aa (snapshot behind v_total/v_nav/v_uncalled/v_afp_c1/c2)
+and mv_aum (snapshot behind v_aum). These back the Alternatives home page; without a
+refresh the dashboard would read a stale snapshot after a data load.
+
+The sync scripts already call this RPC automatically (sync_chist_adjusted.py and
+sync_sqlserver_to_supabase.py). Run this standalone only after a manual data change:
+
+    python sync/refresh_mv.py
 """
 import os
-import requests
+
 from dotenv import load_dotenv
+from supabase import create_client
 
 load_dotenv()
 
@@ -12,21 +22,10 @@ load_dotenv()
 def main():
     url = os.environ["SUPABASE_URL"]
     key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-    # Use the Supabase pg-meta query endpoint
-    endpoint = f"{url}/rest/v1/rpc/exec_sql"
-    headers = {
-        "apikey": key,
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-    }
-    # If exec_sql RPC isn't defined, this returns 404 — fall back gracefully.
-    r = requests.post(
-        endpoint,
-        headers=headers,
-        json={"sql": "REFRESH MATERIALIZED VIEW public.mv_foreign_pdf_summary;"},
-        timeout=300,
-    )
-    print(r.status_code, r.text[:300])
+    client = create_client(url, key)
+    print("Refrescando matviews del dashboard (mv_chist_aa, mv_aum)...")
+    client.rpc("refresh_alternatives_matviews").execute()
+    print("OK")
 
 
 if __name__ == "__main__":

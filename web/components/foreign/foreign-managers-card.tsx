@@ -17,83 +17,69 @@ import { cn } from '@/lib/utils';
 
 type Section = 'em-fi' | 'dm-fi' | 'equity';
 
-// Which classification drives the FI sub-category columns. 'legacy' = the
-// dim_bd_funds.category buckets the PDF Sec 10 uses (default, unchanged).
-// The two nt_ options come from the new taxonomy (BD_Funds.xlsx), carried
-// through the same view chain as the legacy columns.
-type Taxonomy = 'legacy' | 'sub_asset_class' | 'sub_category';
+// FULL SQL (2026-06-26): la sección agrupa por la taxonomía nueva (nt_*), que sale
+// 100% de dim_bd_funds (sin overlays manuales de region/category). Antes usaba
+// r.region/r.category (legacy, con overlay) → ya no. Esto cambia los buckets de
+// región vs el PDF Sec 10 (Brazil y Emerging Europe salen separados). Decisión del
+// usuario: priorizar full-SQL sobre paridad-PDF (como Pearl Diver / DI).
+//
+// El toggle elige qué columna de sub-categoría FI mostrar (ambas son nt_).
+type Taxonomy = 'sub_asset_class' | 'sub_category';
 
 type Props = { rows: ManagerRow[] };
 
-const EM_REGIONS = ['GEM', 'Latam', 'Asia Pacific'] as const;
-const DM_REGIONS = ['Global', 'North America', 'Europe'] as const;
+// Buckets sobre nt_region. EM/DM siguen la misma lógica que pdf_em_dm_nt en las vistas.
+const EM_REGIONS = ['GEM', 'Latam', 'Brazil', 'Asia Pacific', 'Emerging Europe'] as const;
+const DM_REGIONS = ['Global', 'North America', 'Europe', 'Japan'] as const;
 const EQUITY_REGIONS = [
-  'Asia Pacific ex Japan',
+  'North America',
+  'Europe',
+  'Japan',
+  'Global',
+  'Asia Pacific',
+  'Latam',
+  'Brazil',
   'Emerging Europe',
   'GEM',
-  'Japan',
-  'Latam',
-  'Europe',
-  'North America',
-  'Global',
 ] as const;
 
-// Legacy FI sub-category display order + labels. Anything outside this list
-// (Money Market, Private Debt, Real Asset, Bank Loans, etc.) lumps into "Other".
-const LEGACY_FI_ORDER = [
-  'Investment Grade',
-  'High Yield',
-  'Mixed',
-  'Local Currency',
-  'Convertible',
-  'Other',
-] as const;
-
-const LEGACY_LABELS: Record<string, string> = {
-  'Investment Grade': 'Inv. Grade',
-  'High Yield': 'High Yield',
-  Mixed: 'Mixed',
-  'Local Currency': 'Local Ccy',
-  Convertible: 'Convert.',
-  Other: 'Other',
-};
-
-// Category value for a row under the active taxonomy.
+// Category value para una fila bajo la taxonomía activa (ambas son nt_).
 function categoryOf(r: ManagerRow, tax: Taxonomy): string {
   if (tax === 'sub_asset_class') return r.nt_sub_asset_class ?? 'n.a.';
-  if (tax === 'sub_category') return r.nt_sub_category ?? 'n.a.';
-  const raw = r.category;
-  if (!raw) return 'Other';
-  return (LEGACY_FI_ORDER as readonly string[]).includes(raw) ? raw : 'Other';
+  return r.nt_sub_category ?? 'n.a.'; // sub_category
 }
 
-function labelOf(cat: string, tax: Taxonomy): string {
-  return tax === 'legacy' ? (LEGACY_LABELS[cat] ?? cat) : cat;
+function labelOf(cat: string): string {
+  return cat;
 }
 
 function isFixedIncomeRow(r: ManagerRow): boolean {
   return (
-    r.asset_class === 'Fixed Income' ||
-    (r.asset_class === 'Alternative' &&
-      (r.category === 'Private Debt' || r.category === 'Real Asset'))
+    r.nt_asset_class === 'Fixed Income' ||
+    (r.nt_asset_class === 'Alternative' &&
+      (r.nt_category === 'Private Debt' || r.nt_category === 'Real Asset'))
   );
 }
 
 function isEquityRow(r: ManagerRow): boolean {
-  return r.asset_class === 'Equity';
+  return r.nt_asset_class === 'Equity';
 }
 
+// EM/DM derivado de nt_region (espejo de pdf_em_dm_nt en v_*_foreign_pdf).
 function emDm(region: string | null): 'Emerging Markets' | 'Developed Markets' | null {
   if (!region) return null;
-  if (['GEM', 'Latam', 'Asia Pacific', 'Emerging Europe'].includes(region))
+  if (
+    ['GEM', 'Latam', 'Brazil', 'Asia Pacific', 'Asia Pacific ex Japan',
+     'Emerging Europe', 'Middle East', 'RoW'].includes(region)
+  )
     return 'Emerging Markets';
-  if (['Global', 'North America', 'Europe', 'Japan'].includes(region))
+  if (['Global', 'North America', 'Europe', 'Japan', 'Australia'].includes(region))
     return 'Developed Markets';
   return null;
 }
 
+// nt_region ya separa Japan de Asia Pacific → no hace falta remapear.
 function equityRegion(region: string | null): string | null {
-  if (region === 'Asia Pacific') return 'Asia Pacific ex Japan';
   return region;
 }
 
@@ -114,15 +100,15 @@ function aggregateForSection(
   const filter = (r: ManagerRow): { keep: boolean; region: string | null } => {
     if (section === 'em-fi')
       return {
-        keep: isFixedIncomeRow(r) && emDm(r.region) === 'Emerging Markets',
-        region: r.region,
+        keep: isFixedIncomeRow(r) && emDm(r.nt_region) === 'Emerging Markets',
+        region: r.nt_region,
       };
     if (section === 'dm-fi')
       return {
-        keep: isFixedIncomeRow(r) && emDm(r.region) === 'Developed Markets',
-        region: r.region,
+        keep: isFixedIncomeRow(r) && emDm(r.nt_region) === 'Developed Markets',
+        region: r.nt_region,
       };
-    return { keep: isEquityRow(r), region: equityRegion(r.region) };
+    return { keep: isEquityRow(r), region: equityRegion(r.nt_region) };
   };
 
   const byManager = new Map<string, ManagerAgg>();
@@ -188,7 +174,6 @@ export function ForeignManagersCard({ rows }: Props) {
   // Candidate category order for the FI columns. Legacy uses the fixed PDF list;
   // the nt_ taxonomies derive the list from the data, ordered by total USD desc.
   const catOrder: string[] = useMemo(() => {
-    if (taxonomy === 'legacy') return [...LEGACY_FI_ORDER];
     const totals = new Map<string, number>();
     for (const r of rows) {
       if (!isFixedIncomeRow(r)) continue;
@@ -269,7 +254,6 @@ export function ForeignManagersCard({ rows }: Props) {
     equity: 'Total',
   };
   const taxonomyLabel: Record<Taxonomy, string> = {
-    legacy: 'category (legacy)',
     sub_asset_class: 'Sub Asset Class',
     sub_category: 'Sub-Category',
   };
@@ -283,8 +267,11 @@ export function ForeignManagersCard({ rows }: Props) {
               Managers — Foreign {sectionLabels[section]}
             </CardTitle>
             <p className="text-[11px] text-muted-foreground mt-1">
-              Foreign holdings aggregated by fund manager. Active/Passive split
-              from <code>dim_bd_funds.style</code> (ETFs and index funds = Passive).
+              Foreign holdings aggregated by fund manager. Region &amp; asset
+              class from the new taxonomy (<code>nt_region</code> /{' '}
+              <code>nt_asset_class</code>) — 100% SQL, no manual overlay.
+              Active/Passive from <code>dim_bd_funds.style</code> (ETFs and index
+              funds = Passive).
               {!isEquity && (
                 <>
                   {' '}FI columns grouped by <code>{taxonomyLabel[taxonomy]}</code>.
@@ -299,7 +286,6 @@ export function ForeignManagersCard({ rows }: Props) {
                 value={taxonomy}
                 onChange={setTaxonomy}
                 options={[
-                  { value: 'legacy' as Taxonomy, label: 'Legacy' },
                   { value: 'sub_asset_class' as Taxonomy, label: 'Sub AC' },
                   { value: 'sub_category' as Taxonomy, label: 'Sub Cat' },
                 ]}
@@ -364,7 +350,7 @@ export function ForeignManagersCard({ rows }: Props) {
                             key={`${region}-${c}`}
                             className="text-right text-[10px] border-l border-border/40"
                           >
-                            {labelOf(c, taxonomy)}
+                            {labelOf(c)}
                           </TableHead>
                         ))}
                         <TableHead
@@ -381,7 +367,7 @@ export function ForeignManagersCard({ rows }: Props) {
                       key={`tot-${c}`}
                       className="text-right text-[10px] border-l border-border/40 bg-muted/20"
                     >
-                      {labelOf(c, taxonomy)}
+                      {labelOf(c)}
                     </TableHead>
                   ))}
                   <TableHead

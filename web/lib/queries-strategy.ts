@@ -29,6 +29,52 @@ export type StrategyDetail = {
   totalUsdMm: number;
 };
 
+// 1.4 — per-AFP positioning in our (Moneda) funds for a family, with over/underweight
+// vs the system average. Lagged world (CHIST), separate from the fresh strategy AUM.
+export type StrategyAfpOwUwRow = {
+  afp: string;
+  our_usd_mm: number;
+  afp_aum_usd_mm: number;
+  weight: number; // fraction of the AFP's book in this family's Moneda funds
+  sys_avg: number; // system-wide weight (same across rows of a family/fecha)
+  ow_uw: number; // weight - sys_avg (fraction; ×100 = percentage points)
+};
+
+export async function getStrategyAfpOwUw(
+  family_id: number,
+): Promise<{ fecha: string; rows: StrategyAfpOwUwRow[] } | null> {
+  // Latest CHIST report date available for this family.
+  const { data: latest, error: e1 } = await supabase
+    .from('mv_strategy_afp_ow_uw')
+    .select('fecha_reporte')
+    .eq('family_id', family_id)
+    .order('fecha_reporte', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (e1) throw e1;
+  const fecha = latest?.fecha_reporte as string | undefined;
+  if (!fecha) return null;
+
+  const { data, error } = await supabase
+    .from('mv_strategy_afp_ow_uw')
+    .select('afp,our_usd_mm,afp_aum_usd_mm,weight,sys_avg,ow_uw')
+    .eq('family_id', family_id)
+    .eq('fecha_reporte', fecha);
+  if (error) throw error;
+
+  const rows = (data ?? [])
+    .map((r) => ({
+      afp: r.afp as string,
+      our_usd_mm: Number(r.our_usd_mm) || 0,
+      afp_aum_usd_mm: Number(r.afp_aum_usd_mm) || 0,
+      weight: Number(r.weight) || 0,
+      sys_avg: Number(r.sys_avg) || 0,
+      ow_uw: Number(r.ow_uw) || 0,
+    }))
+    .sort((a, b) => b.weight - a.weight);
+  return { fecha, rows };
+}
+
 export async function getStrategyFamilies(): Promise<StrategyFamily[]> {
   // Pull from dim_bd_family directly (some families like 11 Local Equity DI/IF
   // have no comps and therefore don't appear in v_sp_strategy_aum).
@@ -107,14 +153,31 @@ export async function getStrategyDetail(
   periodo: string,
   rollupAfter?: number,
 ): Promise<StrategyDetail | null> {
-  const { data, error } = await supabase
-    .from('v_sp_strategy_aum')
-    .select(
-      'family_id,family_name,family_short_name,fund_short_name,fondo_largo,manager,periodo,monto_dolares,market_share_pct',
-    )
-    .eq('family_id', family_id);
-  if (error) throw error;
-  if (!data || data.length === 0) return null;
+  // v_sp_strategy_aum carries full history (~169 periodos) × every fund, so a
+  // busy family (e.g. EM LC 1,650 rows, Top 10 HY 2,473) blows past PostgREST's
+  // 1000-row default. Without pagination the latest periodo's rows can fall
+  // outside the first page, leaving the snapshot empty ("0 across 0 funds").
+  // We need the full set anyway for the time series, so page through it.
+  const data: Array<Record<string, unknown>> = [];
+  let offset = 0;
+  const PAGE = 1000;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { data: page, error } = await supabase
+      .from('v_sp_strategy_aum')
+      .select(
+        'family_id,family_name,family_short_name,fund_short_name,fondo_largo,manager,periodo,monto_dolares,market_share_pct',
+      )
+      .eq('family_id', family_id)
+      .order('periodo', { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) throw error;
+    if (!page || page.length === 0) break;
+    data.push(...page);
+    if (page.length < PAGE) break;
+    offset += PAGE;
+  }
+  if (data.length === 0) return null;
 
   const family: StrategyFamily = {
     family_id,

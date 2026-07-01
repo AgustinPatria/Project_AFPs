@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/table';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { fmtPct, fmtUsdMM } from '@/lib/format';
+import { afpColor } from '@/lib/dimensions';
 import { AFP_COLOR, type ContributorsRow } from '@/lib/types-market-share';
 
 const CHART_CONFIG = Object.fromEntries(
@@ -133,7 +134,7 @@ export function ContributorsSection({ rows }: { rows: ContributorsRow[] }) {
                 isAnimationActive={false}
               >
                 {slices.map((s) => (
-                  <Cell key={s.afp} fill={AFP_COLOR[s.afp] ?? '#94a3b8'} />
+                  <Cell key={s.afp} fill={afpColor(s.afp)} />
                 ))}
               </Pie>
             </PieChart>
@@ -143,7 +144,7 @@ export function ContributorsSection({ rows }: { rows: ContributorsRow[] }) {
               <li key={s.afp} className="flex items-center gap-2">
                 <span
                   className="h-2.5 w-2.5 rounded-[2px] shrink-0"
-                  style={{ backgroundColor: AFP_COLOR[s.afp] ?? '#94a3b8' }}
+                  style={{ backgroundColor: afpColor(s.afp) }}
                 />
                 <span className="font-medium tabular-nums">
                   {fmtPct(s.share)}

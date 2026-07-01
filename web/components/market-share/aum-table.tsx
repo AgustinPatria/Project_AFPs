@@ -23,7 +23,8 @@ const VIEW_LABEL: Record<View, string> = {
 };
 
 export function AumTable({ rows }: { rows: AumRow[] }) {
-  const [view, setView] = useState<View>('usd');
+  // 2.2 — default to the market-share (%) view.
+  const [view, setView] = useState<View>('share');
   const isShare = view === 'share';
   const valueKey = view === 'clp' ? 'aum_clp_bn' : 'aum_usd_mm';
   const unit = isShare ? '% of system AUM' : VIEW_LABEL[view];
@@ -75,7 +76,15 @@ export function AumTable({ rows }: { rows: AumRow[] }) {
           }))}
         />
       </div>
-      <Table>
+      <Table className="table-fixed">
+        <colgroup>
+          <col className="w-[14%]" />
+          {TIPO_COLS.map((t) => (
+            <col key={t} className="w-[12%]" />
+          ))}
+          <col className="w-[14%]" />
+          <col className="w-[12%]" />
+        </colgroup>
         <TableHeader>
           <TableRow>
             <TableHead>AFP</TableHead>
@@ -85,7 +94,9 @@ export function AumTable({ rows }: { rows: AumRow[] }) {
               </TableHead>
             ))}
             <TableHead className="text-right">TOTAL</TableHead>
-            {!isShare && <TableHead className="text-right">Mkt Share</TableHead>}
+            <TableHead className="text-right">
+              {isShare ? 'AUM (USD MM)' : 'Mkt Share'}
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -109,13 +120,13 @@ export function AumTable({ rows }: { rows: AumRow[] }) {
                 <TableCell className="text-right tabular-nums font-medium">
                   {fmtCell(afpTotals.get(afp) ?? null, grandTotal || null)}
                 </TableCell>
-                {!isShare && (
-                  <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {grandTotal > 0
+                <TableCell className="text-right tabular-nums text-muted-foreground">
+                  {isShare
+                    ? fmtUsdMM(afpTotals.get(afp) ?? 0)
+                    : grandTotal > 0
                       ? fmtPct((afpTotals.get(afp) ?? 0) / grandTotal)
                       : '—'}
-                  </TableCell>
-                )}
+                </TableCell>
               </TableRow>
             ))}
           <TableRow className="border-t-2 border-t-brand/60 bg-muted/40 font-semibold">
@@ -132,9 +143,9 @@ export function AumTable({ rows }: { rows: AumRow[] }) {
             <TableCell className="text-right tabular-nums">
               {isShare ? '100.0%' : fmtCell(grandTotal)}
             </TableCell>
-            {!isShare && (
-              <TableCell className="text-right tabular-nums">100.0%</TableCell>
-            )}
+            <TableCell className="text-right tabular-nums">
+              {isShare ? fmtUsdMM(grandTotal) : '100.0%'}
+            </TableCell>
           </TableRow>
         </TableBody>
       </Table>

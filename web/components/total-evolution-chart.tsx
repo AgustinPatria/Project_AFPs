@@ -18,7 +18,12 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { SegmentedControl } from '@/components/ui/segmented-control';
-import { AFPS, type AfpName, type EvolutionPoint } from '@/lib/dimensions';
+import {
+  AFPS,
+  AFP_COLORS,
+  type AfpName,
+  type EvolutionPoint,
+} from '@/lib/dimensions';
 import { fmtUsdMM } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -26,16 +31,8 @@ type Period = '1M' | '3M' | 'YTD' | '1Y' | '3Y' | 'ALL';
 type ChartKind = 'line' | 'bar';
 type Mode = 'usd' | 'pct';
 
-const COLORS: Record<AfpName, string> = {
-  BANSANDER: 'oklch(0.6 0 0)',
-  CAPITAL: 'oklch(0.75 0.16 50)',
-  CUPRUM: 'oklch(0.7 0.14 160)',
-  HABITAT: 'oklch(0.65 0.18 250)',
-  MODELO: 'oklch(0.65 0.18 305)',
-  PLANVITAL: 'oklch(0.78 0.16 100)',
-  PROVIDA: 'oklch(0.65 0.18 360)',
-  UNO: 'oklch(0.78 0.03 220)',
-};
+// AFP colors come from the canonical map in dimensions.ts (task 6.1).
+const COLORS = AFP_COLORS;
 
 const CHART_CONFIG = Object.fromEntries(
   AFPS.map((afp) => [afp, { label: afp, color: COLORS[afp] }]),

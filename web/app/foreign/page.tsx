@@ -92,14 +92,27 @@ export default async function Page({
   // where YTD start = MoM start).
   const dateSet = new Set(dateStrings);
   const momAvailable = changes != null && dateSet.has(changes.fechaMomStart);
+  const threeMAvailable =
+    changes != null &&
+    dateSet.has(changes.fechaThreeMStart) &&
+    changes.fechaThreeMStart !== changes.fechaMomStart;
+  const sixMAvailable =
+    changes != null &&
+    dateSet.has(changes.fechaSixMStart) &&
+    changes.fechaSixMStart !== changes.fechaMomStart &&
+    changes.fechaSixMStart !== changes.fechaThreeMStart;
   const ytdAvailable =
     changes != null &&
     dateSet.has(changes.fechaYtdStart) &&
-    changes.fechaYtdStart !== changes.fechaMomStart;
+    changes.fechaYtdStart !== changes.fechaMomStart &&
+    changes.fechaYtdStart !== changes.fechaThreeMStart &&
+    changes.fechaYtdStart !== changes.fechaSixMStart;
   const ltmAvailable =
     changes != null &&
     dateSet.has(changes.fechaLtmStart) &&
     changes.fechaLtmStart !== changes.fechaMomStart &&
+    changes.fechaLtmStart !== changes.fechaThreeMStart &&
+    changes.fechaLtmStart !== changes.fechaSixMStart &&
     changes.fechaLtmStart !== changes.fechaYtdStart;
   const threeYAvailable = changes != null && dateSet.has(changes.fechaThreeYStart);
 
@@ -169,23 +182,33 @@ export default async function Page({
           <ForeignChangesCard
             endRows={changes.endRows}
             momStartRows={changes.momStartRows}
+            threeMStartRows={changes.threeMStartRows}
+            sixMStartRows={changes.sixMStartRows}
             ytdStartRows={changes.ytdStartRows}
             ltmStartRows={changes.ltmStartRows}
             threeYStartRows={changes.threeYStartRows}
             endLabel={endLabel}
             momLabel={`${fmtMonYY(changes.fechaMomStart)} USD mm`}
+            threeMLabel={`${fmtMonYY(changes.fechaThreeMStart)} USD mm`}
+            sixMLabel={`${fmtMonYY(changes.fechaSixMStart)} USD mm`}
             ytdLabel={`${fmtMonYY(changes.fechaYtdStart)} USD mm`}
             ltmLabel={`${fmtMonYY(changes.fechaLtmStart)} USD mm`}
             threeYLabel={`${fmtMonYY(changes.fechaThreeYStart)} USD mm`}
             momPeriod={`${fmtMonYY(changes.fechaMomStart)} → ${fmtMonYY(fecha)}`}
+            threeMPeriod={`${fmtMonYY(changes.fechaThreeMStart)} → ${fmtMonYY(fecha)}`}
+            sixMPeriod={`${fmtMonYY(changes.fechaSixMStart)} → ${fmtMonYY(fecha)}`}
             ytdPeriod={`${fmtMonYY(changes.fechaYtdStart)} → ${fmtMonYY(fecha)}`}
             ltmPeriod={`${fmtMonYY(changes.fechaLtmStart)} → ${fmtMonYY(fecha)}`}
             threeYPeriod={`${fmtMonYY(changes.fechaThreeYStart)} → ${fmtMonYY(fecha)}`}
             momAvailable={momAvailable}
+            threeMAvailable={threeMAvailable}
+            sixMAvailable={sixMAvailable}
             ytdAvailable={ytdAvailable}
             ltmAvailable={ltmAvailable}
             threeYAvailable={threeYAvailable}
             momSplit={splits.mom}
+            threeMSplit={splits.threeM}
+            sixMSplit={splits.sixM}
             ytdSplit={splits.ytd}
             ltmSplit={splits.ltm}
             threeYSplit={splits.threeY}

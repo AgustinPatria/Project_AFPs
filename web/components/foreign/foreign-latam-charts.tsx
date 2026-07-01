@@ -18,6 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { ASSET_CLASS_COLORS } from '@/lib/dimensions';
 import { fmtUsdMM } from '@/lib/format';
 import type { LatamMonthPoint } from '@/lib/queries-foreign-latam';
 
@@ -27,9 +28,11 @@ function fmtMonth(fecha: string): string {
   return `${MONTH_ABBR[m - 1]}-${(y % 100).toString().padStart(2, '0')}`;
 }
 
-const C_EQUITY = 'oklch(0.65 0.18 250)';
-const C_FI = 'oklch(0.65 0.18 30)';
-const C_DI = 'oklch(0.7 0.14 160)';
+// Asset-class colors from the canonical palette (task 6.2). Vehicle-type colors
+// below (active/passive/ETF/funds) are a separate taxonomy, left as-is.
+const C_EQUITY = ASSET_CLASS_COLORS.equity;
+const C_FI = ASSET_CLASS_COLORS.fixed_income;
+const C_DI = ASSET_CLASS_COLORS.direct_investment;
 const C_ACTIVE = 'oklch(0.65 0.18 250)';
 const C_ETF = 'oklch(0.7 0.16 200)';
 const C_PASSIVE = 'oklch(0.6 0.14 280)';

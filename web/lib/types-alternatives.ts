@@ -52,22 +52,24 @@ export type AfpDetailSeries = {
   local: SeriesPoint[]; // keys: LOCAL_KEYS
 };
 
-export const AFP_COLORS: Record<AltAfp, string> = {
-  CAPITAL: 'oklch(0.75 0.16 50)',
-  CUPRUM: 'oklch(0.7 0.14 160)',
-  HABITAT: 'oklch(0.65 0.18 250)',
-  MODELO: 'oklch(0.65 0.18 305)',
-  PLANVITAL: 'oklch(0.78 0.16 100)',
-  PROVIDA: 'oklch(0.65 0.18 360)',
-  UNO: 'oklch(0.78 0.03 220)',
-};
+// Canonical per-AFP colors live in dimensions.ts (task 6.1). Re-exported here
+// so existing Alternatives imports keep working; covers all 8 AFPs (the alts
+// charts only ever index the 7 ALT_AFPS, the extra BANSANDER key is harmless).
+export { AFP_COLORS } from './dimensions';
 
+// Canonical per-C1 (alternatives) asset-class colors — single source (task 6.2:
+// consistent color per asset class). These mirror the semantic --chart-N CSS
+// vars defined in globals.css, so every chart that colors C1 classes stays in
+// sync and theme-aware: the by-category & AFP-detail charts (which read this
+// map) and nav-by-afp-c1-chart (which reads the vars directly) now match.
+//   --chart-1 PE blue · --chart-2 PD orange · --chart-3 RA green
+//   --chart-4 Other purple · --chart-5 Local slate
 export const C1_COLORS: Record<string, string> = {
-  'Private Equity': 'oklch(0.65 0.18 250)',
-  'Private Debt': 'oklch(0.7 0.14 160)',
-  'Real Asset': 'oklch(0.75 0.16 50)',
-  'Other Alternative': 'oklch(0.6 0 0)',
-  Local: 'oklch(0.65 0.18 305)',
+  'Private Equity': 'var(--chart-1)',
+  'Private Debt': 'var(--chart-2)',
+  'Real Asset': 'var(--chart-3)',
+  'Other Alternative': 'var(--chart-4)',
+  Local: 'var(--chart-5)',
 };
 
 // Shared sequential palette for strategy-level charts.

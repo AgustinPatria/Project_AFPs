@@ -15,6 +15,7 @@ import {
   getAssetClassByAfp,
   getAssetClassByTipo,
   getAssetClassEvolution,
+  getAssetClassEvolutionByAfp,
   getLocalFiByAfp,
 } from '@/lib/queries-asset-allocation';
 
@@ -36,11 +37,12 @@ export default async function Page({
     );
   }
 
-  const [byAfp, byTipo, localFi, evolution] = await Promise.all([
+  const [byAfp, byTipo, localFi, evolution, evolutionByAfp] = await Promise.all([
     getAssetClassByAfp(fecha),
     getAssetClassByTipo(fecha),
     getLocalFiByAfp(fecha),
     getAssetClassEvolution(),
+    getAssetClassEvolutionByAfp(),
   ]);
 
   // AFP-level Total Assets (USD MM) — denominator for Local FI's "% of Total
@@ -71,8 +73,19 @@ export default async function Page({
             Asset Class Distribution
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           <AssetClassMatrix byAfp={byAfp} byTipo={byTipo} />
+          <p className="text-[11px] text-muted-foreground">
+            <strong>Alternatives</strong> is the SP regulatory “Activos
+            Alternativos” line (current month, no lag), carved out of Equity and
+            Fixed Income. It is a narrower measure than — and does not reconcile
+            with — the authoritative alternatives view in the{' '}
+            <a href="/" className="underline underline-offset-2">
+              Alternative Assets
+            </a>{' '}
+            module, which is CHIST-based (≈4-month lag) and governs the full
+            alternatives universe.
+          </p>
         </CardContent>
       </Card>
 
@@ -97,7 +110,7 @@ export default async function Page({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <AssetAllocationOverTime rows={evolution} />
+          <AssetAllocationOverTime rows={evolutionByAfp} />
         </CardContent>
       </Card>
 

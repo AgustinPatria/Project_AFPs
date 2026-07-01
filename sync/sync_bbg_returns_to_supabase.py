@@ -1,5 +1,10 @@
 """Mirror SQL Server -> Supabase de los retornos Bloomberg foreign (Sec 07).
 
+⚠️ DEPRECADO 2026-06-26 — la tabla destino `bbg_returns_foreign` fue dropeada de
+Supabase. Los retornos Bloomberg ahora se sincronizan con `sync/sync_bbg_returns.py`
+(fuente `AFP_CL_BBG_Returns`, destino `bbg_returns`). Las flows de /foreign leen
+`bbg_returns`. Este script se deja como referencia pero se auto-bloquea al ejecutar.
+
 Fuente:  Inteligencia_Mercado.dbo.AFP_CL_BBG_Returns_Foreign (historia completa 2021-07+)
 Destino: Supabase tabla bbg_returns_foreign (ventana >= 2025-01-01 solamente)
 
@@ -28,7 +33,17 @@ BATCH = 1000
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--desde", default=DESDE_DEFAULT)
+    ap.add_argument("--force", action="store_true",
+                    help="Override del bloqueo de deprecación (requiere recrear bbg_returns_foreign).")
     args = ap.parse_args()
+
+    if not args.force:
+        import sys
+        sys.exit(
+            "DEPRECADO: `bbg_returns_foreign` fue dropeada (2026-06-26). Usá "
+            "sync/sync_bbg_returns.py -> tabla `bbg_returns`. Pasá --force solo si "
+            "recreaste bbg_returns_foreign a propósito."
+        )
 
     cn = pyodbc.connect(
         "DRIVER={ODBC Driver 18 for SQL Server};"

@@ -33,8 +33,9 @@ type NavItem = {
 // printed report. Sec 08 (Top Net Purchases and Sales — Foreign Funds) lives
 // inside /foreign as the Top Flows card of the Changes tab.
 type PdfSection = string | null; // e.g. '01', '02·03', null for legacy.
+// The numbered PDF sections (01–10) lead the menu; Alternative Assets (the
+// legacy, non-PDF-numbered view at '/') sits at the bottom per feedback 3.4.
 const NAV: (NavItem & { pdf: PdfSection })[] = [
-  { href: '/', label: 'Alternative Assets', icon: Briefcase, ready: true, pdf: null },
   { href: '/market-share', label: 'Market Share', icon: BarChart3, ready: true, pdf: '01' },
   { href: '/asset-allocation', label: 'Asset Allocation', icon: PieChart, ready: true, pdf: '02·03' },
   { href: '/strategy', label: 'Strategy', icon: Target, ready: true, pdf: '04' },
@@ -42,6 +43,7 @@ const NAV: (NavItem & { pdf: PdfSection })[] = [
   { href: '/chilean-stocks', label: 'Chilean Stocks', icon: Building2, ready: true, pdf: '05·06' },
   { href: '/distributors', label: 'Distributors', icon: Users, ready: true, pdf: '09' },
   { href: '/managers', label: 'Managers', icon: UserCog, ready: true, pdf: '10' },
+  { href: '/', label: 'Alternative Assets', icon: Briefcase, ready: true, pdf: null },
 ];
 
 const ADMIN_NAV: { href: string; label: string; icon: typeof BarChart3 }[] = [

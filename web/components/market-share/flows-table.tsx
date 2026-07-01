@@ -101,7 +101,14 @@ export function FlowsTable({
           ]}
         />
       </div>
-      <Table>
+      <Table className="table-fixed">
+        <colgroup>
+          <col className="w-[16%]" />
+          {TIPO_COLS.map((t) => (
+            <col key={t} className="w-[14%]" />
+          ))}
+          <col className="w-[14%]" />
+        </colgroup>
         <TableHeader>
           <TableRow>
             <TableHead>AFP</TableHead>

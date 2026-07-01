@@ -13,6 +13,7 @@ import { FlowsTable } from '@/components/market-share/flows-table';
 import {
   getAumByAfpTipo,
   getContributorsByAfp,
+  getCuotaSeries,
   getFlowsByAfpTipo,
   getMarketShareDates,
   getReturnsByAfpTipo,
@@ -45,8 +46,15 @@ export default async function Page({
     dates.includes(`${y}-12-31`),
   );
 
-  const [aum, returns, flows, contributors, prevAum, calendarYears] =
-    await Promise.all([
+  const [
+    aum,
+    returns,
+    flows,
+    contributors,
+    prevAum,
+    calendarYears,
+    cuotaSeries,
+  ] = await Promise.all([
       getAumByAfpTipo(fecha),
       getReturnsByAfpTipo(fecha),
       getFlowsByAfpTipo(fecha),
@@ -64,6 +72,7 @@ export default async function Page({
           return { year, returns: r, flows: f };
         }),
       ),
+      getCuotaSeries(),
     ]);
 
   const cyReturns = calendarYears.map((c) => ({ year: c.year, rows: c.returns }));
@@ -95,13 +104,13 @@ export default async function Page({
 
       <section className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          label="System AUM (USD MM)"
+          label="System AUM"
           value={sysAumUsd}
           prev={prevSysAumUsd || null}
           icon={Wallet}
         />
         <KpiCard
-          label="System AUM (CLP bn)"
+          label="System AUM"
           value={sysAumClp}
           unit="CLP bn"
           icon={Coins}
@@ -143,7 +152,11 @@ export default async function Page({
           <CardTitle className="text-sm font-medium">Returns</CardTitle>
         </CardHeader>
         <CardContent>
-          <ReturnsTable rows={returns} calendarYears={cyReturns} />
+          <ReturnsTable
+            rows={returns}
+            calendarYears={cyReturns}
+            cuotaSeries={cuotaSeries}
+          />
         </CardContent>
       </Card>
 

@@ -4,6 +4,16 @@ Sync SQL Server (Inteligencia_Mercado.dbo.AFP_CL_SP_*) -> Supabase (sp_*, cotiza
 SQL Server es source of truth con historia completa. Supabase es el backend
 que sirve al dashboard y mantiene solo la "ventana viva" de datos.
 
+⚠️ MIRROR sp_* RETIRADO (2026-06-26)
+====================================
+El dashboard ya NO lee las tablas Supabase sp_* (sp_fila / sp_valor_fondo /
+sp_valor_afp / sp_valor_instrumento): todo se migró a `consolidated_sd`
+(+ chist_adjusted / bbg_returns) en la iniciativa "SQL fuente única". Esas
+tablas se dropearon de Supabase (−66 MB). El flag `SYNC_SP_TABLES = False`
+apaga la pata sp_* de este script; **cotizantes_afp se sigue sincronizando**
+(lo usa Market Share). La fuente SQL Server AFP_CL_SP_* queda intacta, así que
+re-habilitar es solo poner el flag en True y recrear las tablas en Supabase.
+
 VENTANA
 =======
 Solo periodos >= 2025-01 (y fechas >= 2025-01-01 para cotizantes) viajan a
@@ -66,6 +76,11 @@ load_dotenv()
 # =============================================================
 # CONFIG
 # =============================================================
+
+# sp_* mirror retirado (ver docstring). False = no toca las tablas sp_* (dropeadas
+# en Supabase); el script queda efectivamente como sync de cotizantes_afp. Poner en
+# True solo si se recrean las tablas sp_* y se quiere volver al two-hop completo.
+SYNC_SP_TABLES = False
 
 WINDOW_START_PERIODO = "2025-01"      # sp_*: filtro f.periodo >= esto
 WINDOW_START_FECHA   = "2025-01-01"   # cotizantes_afp: filtro fecha >= esto
@@ -164,19 +179,21 @@ def cleanup_out_of_window(client: Client) -> None:
     """Borra de Supabase los periodos < WINDOW_START_PERIODO (data heredada del
     pipeline viejo que escribia directo), EXCEPTO los BASELINE_PERIODOS que el
     dashboard necesita. One-shot al inicio del mirror."""
-    print(f"[cleanup] borrando sp_* con periodo < {WINDOW_START_PERIODO} y "
-          f"cotizantes con fecha < {WINDOW_START_FECHA} "
-          f"(preservando baselines {', '.join(BASELINE_PERIODOS)})")
-    resp = (
-        client.table("sp_fila")
-        .delete()
-        .lt("periodo", WINDOW_START_PERIODO)
-        .not_.in_("periodo", list(BASELINE_PERIODOS))
-        .execute()
-    )
-    n_fila = len(resp.data) if resp.data else 0
-    if n_fila:
-        print(f"      {n_fila:,} sp_fila viejas borradas (cascade hijas)")
+    print(f"[cleanup] borrando cotizantes con fecha < {WINDOW_START_FECHA}"
+          + (f" y sp_* con periodo < {WINDOW_START_PERIODO} "
+             f"(preservando baselines {', '.join(BASELINE_PERIODOS)})" if SYNC_SP_TABLES else ""))
+    n_fila = 0
+    if SYNC_SP_TABLES:
+        resp = (
+            client.table("sp_fila")
+            .delete()
+            .lt("periodo", WINDOW_START_PERIODO)
+            .not_.in_("periodo", list(BASELINE_PERIODOS))
+            .execute()
+        )
+        n_fila = len(resp.data) if resp.data else 0
+        if n_fila:
+            print(f"      {n_fila:,} sp_fila viejas borradas (cascade hijas)")
     resp = client.table("cotizantes_afp").delete().lt("fecha", WINDOW_START_FECHA).execute()
     n_cot = len(resp.data) if resp.data else 0
     if n_cot:
@@ -345,14 +362,17 @@ def sync_cotizantes(engine, client: Client) -> int:
 
 def print_summary(client: Client):
     print("--- Resumen Supabase tras sync ---")
-    for tbl in ("sp_fila", "sp_valor_fondo", "sp_valor_afp", "sp_valor_instrumento", "cotizantes_afp"):
+    tablas = ("sp_fila", "sp_valor_fondo", "sp_valor_afp", "sp_valor_instrumento", "cotizantes_afp") \
+        if SYNC_SP_TABLES else ("cotizantes_afp",)
+    for tbl in tablas:
         resp = client.table(tbl).select("*", count="exact").limit(1).execute()
         print(f"  {tbl:24s} {resp.count or 0:>10,} filas")
 
-    asc = client.table("sp_fila").select("periodo").order("periodo", desc=False).limit(1).execute()
-    dsc = client.table("sp_fila").select("periodo").order("periodo", desc=True).limit(1).execute()
-    if asc.data and dsc.data:
-        print(f"  rango sp_fila:           [{asc.data[0]['periodo']} -> {dsc.data[0]['periodo']}]")
+    if SYNC_SP_TABLES:
+        asc = client.table("sp_fila").select("periodo").order("periodo", desc=False).limit(1).execute()
+        dsc = client.table("sp_fila").select("periodo").order("periodo", desc=True).limit(1).execute()
+        if asc.data and dsc.data:
+            print(f"  rango sp_fila:           [{asc.data[0]['periodo']} -> {dsc.data[0]['periodo']}]")
 
 
 # =============================================================
@@ -384,12 +404,14 @@ def main():
     if not args.periodo:
         cleanup_out_of_window(client)
 
-    if not args.only_cotizantes:
+    if not args.only_cotizantes and SYNC_SP_TABLES:
         override = normalize_periodo(args.periodo) if args.periodo else None
         periodos = get_target_periodos(engine, override=override)
         print(f"Periodos sp_* a sincronizar ({len(periodos)}): {', '.join(periodos)}\n")
         for p in periodos:
             sync_periodo(engine, client, p)
+    elif not SYNC_SP_TABLES and not args.only_cotizantes:
+        print("sp_* mirror retirado (SYNC_SP_TABLES=False): se omite; solo cotizantes_afp.\n")
 
     if not args.skip_cotizantes:
         sync_cotizantes(engine, client)

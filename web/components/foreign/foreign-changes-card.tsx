@@ -6,7 +6,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { ForeignChangesTable } from './foreign-changes-table';
 import type { ForeignSplit, ForeignSummaryRow } from '@/lib/types-foreign';
 
-type View = 'mom' | 'ytd' | 'ltm' | '3y';
+type View = 'mom' | '3m' | '6m' | 'ytd' | 'ltm' | '3y';
 
 type ViewConfig = {
   id: View;
@@ -21,23 +21,33 @@ type ViewConfig = {
 type Props = {
   endRows: ForeignSummaryRow[];
   momStartRows: ForeignSummaryRow[];
+  threeMStartRows: ForeignSummaryRow[];
+  sixMStartRows: ForeignSummaryRow[];
   ytdStartRows: ForeignSummaryRow[];
   ltmStartRows: ForeignSummaryRow[];
   threeYStartRows: ForeignSummaryRow[];
   endLabel: string;
   momLabel: string;
+  threeMLabel: string;
+  sixMLabel: string;
   ytdLabel: string;
   ltmLabel: string;
   threeYLabel: string;
   momPeriod: string;
+  threeMPeriod: string;
+  sixMPeriod: string;
   ytdPeriod: string;
   ltmPeriod: string;
   threeYPeriod: string;
   momAvailable: boolean;
+  threeMAvailable: boolean;
+  sixMAvailable: boolean;
   ytdAvailable: boolean;
   ltmAvailable: boolean;
   threeYAvailable: boolean;
   momSplit: ForeignSplit;
+  threeMSplit: ForeignSplit;
+  sixMSplit: ForeignSplit;
   ytdSplit: ForeignSplit;
   ltmSplit: ForeignSplit;
   threeYSplit: ForeignSplit;
@@ -60,6 +70,24 @@ export function ForeignChangesCard(props: Props) {
       period: props.momPeriod,
       available: props.momAvailable,
       split: props.momSplit,
+    },
+    {
+      id: '3m',
+      label: '3M',
+      startRows: props.threeMStartRows,
+      startLabel: props.threeMLabel,
+      period: props.threeMPeriod,
+      available: props.threeMAvailable,
+      split: props.threeMSplit,
+    },
+    {
+      id: '6m',
+      label: '6M',
+      startRows: props.sixMStartRows,
+      startLabel: props.sixMLabel,
+      period: props.sixMPeriod,
+      available: props.sixMAvailable,
+      split: props.sixMSplit,
     },
     {
       id: 'ytd',
@@ -123,8 +151,8 @@ export function ForeignChangesCard(props: Props) {
             <strong className="font-medium">
               Return/Flow split not available for this window.
             </strong>{' '}
-            Bloomberg returns are synced from Feb-25 onwards; this window falls
-            outside that range, so only Total Change (end − start) is shown.
+            No Bloomberg return data covers this window, so only Total Change
+            (end − start) is shown.
           </div>
         ) : (
           <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground leading-relaxed">

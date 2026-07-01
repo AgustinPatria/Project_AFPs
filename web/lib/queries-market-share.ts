@@ -2,6 +2,7 @@ import { supabase } from './supabase-server';
 import type {
   AumRow,
   ContributorsRow,
+  CuotaPoint,
   FlowsRow,
   ReturnsRow,
 } from './types-market-share';
@@ -54,6 +55,41 @@ export async function getReturnsByAfpTipo(fecha: string): Promise<ReturnsRow[]> 
     ret_ytd_usd: r.ret_ytd_usd != null ? Number(r.ret_ytd_usd) : null,
     ret_ltm_usd: r.ret_ltm_usd != null ? Number(r.ret_ltm_usd) : null,
   }));
+}
+
+/**
+ * Month-end cuota + FX per AFP × tipo_fondo across the available window. Small
+ * (~7 afp × 6 tipo × months). Feeds the custom date-range return on the Returns
+ * table — returns for any two month-ends are computed client-side from this.
+ */
+export async function getCuotaSeries(): Promise<CuotaPoint[]> {
+  const rows: CuotaPoint[] = [];
+  let offset = 0;
+  const PAGE = 1000;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { data, error } = await supabase
+      .from('v_returns_afp_tipo')
+      .select('fecha,afp,tipo_fondo,valor_cuota,fx_clp_per_usd')
+      .gte('fecha', '2025-01-01')
+      .order('fecha', { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    for (const r of data) {
+      rows.push({
+        fecha: r.fecha as string,
+        afp: r.afp as string,
+        tipo_fondo: r.tipo_fondo as string,
+        valor_cuota: r.valor_cuota != null ? Number(r.valor_cuota) : null,
+        fx_clp_per_usd:
+          r.fx_clp_per_usd != null ? Number(r.fx_clp_per_usd) : null,
+      });
+    }
+    if (data.length < PAGE) break;
+    offset += PAGE;
+  }
+  return rows;
 }
 
 export async function getFlowsByAfpTipo(fecha: string): Promise<FlowsRow[]> {

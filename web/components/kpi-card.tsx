@@ -36,7 +36,12 @@ export function KpiCard({
           {fmtUsdMM(value)}
         </div>
         <div className="flex items-center gap-2 mt-1.5 text-xs">
-          {delta != null ? (
+          {/* Always show the unit (currency + magnitude) so the figure is never
+              ambiguous — previously it was hidden whenever a delta was present. */}
+          {unit ? (
+            <span className="text-muted-foreground">{unit}</span>
+          ) : null}
+          {delta != null && (
             <>
               <span
                 className={cn(
@@ -55,8 +60,6 @@ export function KpiCard({
               </span>
               <span className="text-muted-foreground">vs prev. month</span>
             </>
-          ) : (
-            <span className="text-muted-foreground">{unit}</span>
           )}
         </div>
         <Sparkline data={sparkline} isUp={isUp} />

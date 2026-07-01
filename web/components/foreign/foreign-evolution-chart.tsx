@@ -13,18 +13,21 @@ import {
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SegmentedControl } from '@/components/ui/segmented-control';
+import { ASSET_CLASS_COLORS } from '@/lib/dimensions';
 import { fmtUsdMM } from '@/lib/format';
 import type { ForeignEvolutionPoint } from '@/lib/queries-foreign';
 import { cn } from '@/lib/utils';
 
 type Mode = 'usd' | 'pct';
 
+// Colors from the canonical asset-class palette (task 6.2) — Equity/Fixed
+// Income here match the same classes in the Asset Allocation module.
 const SERIES = [
-  { key: 'equity', label: 'Equity', color: 'oklch(0.65 0.18 250)' },
-  { key: 'fixed_income', label: 'Fixed Income', color: 'oklch(0.65 0.18 30)' },
-  { key: 'private_equity', label: 'Private Equity', color: 'oklch(0.65 0.18 305)' },
-  { key: 'direct_investment', label: 'Direct Investment', color: 'oklch(0.7 0.14 160)' },
-  { key: 'other', label: 'Other', color: 'oklch(0.55 0.05 250)' },
+  { key: 'equity', label: 'Equity', color: ASSET_CLASS_COLORS.equity },
+  { key: 'fixed_income', label: 'Fixed Income', color: ASSET_CLASS_COLORS.fixed_income },
+  { key: 'private_equity', label: 'Private Equity', color: ASSET_CLASS_COLORS.private_equity },
+  { key: 'direct_investment', label: 'Direct Investment', color: ASSET_CLASS_COLORS.direct_investment },
+  { key: 'other', label: 'Other', color: ASSET_CLASS_COLORS.other },
 ] as const;
 
 function fmtMonth(fecha: string): string {

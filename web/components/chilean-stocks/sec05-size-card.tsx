@@ -7,17 +7,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { SourceBadge } from '@/components/source-badge';
-import type { Sec05QuartileRow } from '@/lib/types-sec05';
+import type { Sec05SizeRow } from '@/lib/types-sec05';
 import type { Sec05ResolvedFechas } from '@/lib/queries-sec05';
 
 function fmtPct(v: number): string {
   if (v === 0) return '—';
   return `${(v * 100).toFixed(1)}%`;
-}
-
-function cuartilLabel(c: Sec05QuartileRow['cuartil']): string {
-  return c === 'Other' ? 'Other' : `Q${c}`;
 }
 
 const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -27,12 +22,12 @@ function fmtMonYY(fecha: string | null): string {
   return `${MONTH_ABBR[m - 1]}-${(y % 100).toString().padStart(2, '0')}`;
 }
 
-export function Sec05QuartileCard({
+export function Sec05SizeCard({
   rows,
   fechas,
   targetFecha,
 }: {
-  rows: Sec05QuartileRow[];
+  rows: Sec05SizeRow[];
   fechas: Sec05ResolvedFechas;
   targetFecha: string;
 }) {
@@ -49,42 +44,27 @@ export function Sec05QuartileCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Portfolio breakdown by quartile</CardTitle>
+        <CardTitle className="text-base">Portfolio breakdown by size</CardTitle>
         <div className="text-[10px] text-muted-foreground mt-1">
-          Each column resolved to closest available date ≤ {fmtMonYY(targetFecha)}
+          Size = S&amp;P IGPA Large / Mid / Small membership · each column
+          resolved to closest available date ≤ {fmtMonYY(targetFecha)}
         </div>
       </CardHeader>
       <CardContent className="pt-0">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[18%]">Quartile</TableHead>
-              <ColHeader
-                title="PIONERO"
-                fecha={fechas.pionero}
-                dataset="sec05_pionero_benchmark"
-              />
-              <ColHeader
-                title="MRV"
-                fecha={fechas.mrv}
-                dataset="sec05_mrv_benchmark"
-              />
-              <ColHeader
-                title="IPSA"
-                fecha={fechas.ipsa}
-                dataset="sec05_ipsa_composition"
-              />
-              <ColHeader
-                title="AFPs"
-                fecha={fechas.afps}
-                dataset="sec01_market_share"
-              />
+              <TableHead className="w-[18%]">Size</TableHead>
+              <ColHeader title="PIONERO" fecha={fechas.pionero} />
+              <ColHeader title="MRV" fecha={fechas.mrv} />
+              <ColHeader title="IPSA" fecha={fechas.ipsa} />
+              <ColHeader title="AFPs" fecha={fechas.afps} />
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((r) => (
-              <TableRow key={r.cuartil}>
-                <TableCell className="font-medium">{cuartilLabel(r.cuartil)}</TableCell>
+              <TableRow key={r.bucket}>
+                <TableCell className="font-medium">{r.bucket}</TableCell>
                 <TableCell className="text-right tabular-nums">{fmtPct(r.pionero_pct)}</TableCell>
                 <TableCell className="text-right tabular-nums">{fmtPct(r.mrv_pct)}</TableCell>
                 <TableCell className="text-right tabular-nums">{fmtPct(r.ipsa_pct)}</TableCell>
@@ -100,26 +80,20 @@ export function Sec05QuartileCard({
             </TableRow>
           </TableBody>
         </Table>
+        <p className="text-[10px] text-muted-foreground mt-2">
+          &quot;No IGPA&quot; = stocks outside the S&amp;P IGPA universe (off-index
+          small caps, foreign listings). Index membership from
+          TBL_BMS_Exposicion (S&amp;P), daily since Mar-2025.
+        </p>
       </CardContent>
     </Card>
   );
 }
 
-function ColHeader({
-  title,
-  fecha,
-  dataset,
-}: {
-  title: string;
-  fecha: string | null;
-  dataset: string;
-}) {
+function ColHeader({ title, fecha }: { title: string; fecha: string | null }) {
   return (
     <TableHead className="text-right">
-      <div className="flex items-center justify-end gap-1.5">
-        {title}
-        <SourceBadge dataset={dataset} />
-      </div>
+      <div className="flex items-center justify-end gap-1.5">{title}</div>
       <div className="text-[9px] font-mono text-muted-foreground mt-0.5">
         {fmtMonYY(fecha)}
       </div>

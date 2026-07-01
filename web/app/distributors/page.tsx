@@ -2,6 +2,7 @@ import { Users } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import { AsOfBadge } from '@/components/as-of-badge';
 import { Disclaimer } from '@/components/disclaimer';
+import { NotFromSql } from '@/components/not-from-sql';
 import { DistributorsSec09Table } from '@/components/distributors/sec09-table';
 import {
   distributorBaselines,
@@ -70,7 +71,11 @@ export default async function Page({
         <Disclaimer variant="foreign-lag">
           Analysis includes only foreign investments.
         </Disclaimer>
-        <DistributorsSec09Table rows={rows} fechas={resolved} />
+        {/* Montos desde SQL (consolidated_sd), pero la dimensión que organiza la tabla
+            —el mapeo manager→distribuidor— es manual (pendiente #6). Ver lineage. */}
+        <NotFromSql reason="Montos desde SQL (consolidated_sd), pero el mapeo manager→distribuidor es manual (dim_distributor_by_manager + overlay). Aún no en SQL fuente única (pendiente #6).">
+          <DistributorsSec09Table rows={rows} fechas={resolved} />
+        </NotFromSql>
       </div>
     </main>
   );
