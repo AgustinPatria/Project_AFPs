@@ -136,9 +136,10 @@ Dashboard de BI para análisis de datos de **AFPs** (fondos de pensiones). Módu
 
 ## Módulo 6 — UX/UI (transversal)
 
-### 6.1 — Color fijo por AFP
+### 6.1 — Color fijo por AFP ✅ (verificado 2026-07-01)
 - **Tipo:** Mejora · **Prioridad:** Media
 - **Esperado:** Asignar a cada AFP su **color** propio y mantenerlo consistente en todo el dashboard.
+- **Implementado:** `AFP_COLORS` + `afpColor()` en `web/lib/dimensions.ts` — fuente única (8 AFPs, hue oklch fijo por AFP; BANSANDER legacy en gris). Verificado por barrido: los 3 stacked areas por AFP del home (Total/NAV/Uncalled by AFP), Contributors de market-share y Total Evolution leen de la paleta canónica; ningún gráfico por-AFP colorea por posición. Los gráficos donde el color codifica otra cosa (categorías C1, clases de activo, heatmaps OW/UW) usan sus propias paletas, como corresponde.
 
 ### 6.2 — Color consistente por clase de activo
 - **Tipo:** Mejora · **Prioridad:** Baja
