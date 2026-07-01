@@ -130,6 +130,7 @@ Dashboard de BI para análisis de datos de **AFPs** (fondos de pensiones). Módu
 - **Contexto:** Para acciones locales con distintas series, el caso actual **asume que la posición de SQM consolida ambas series y muestra solo una como nemo**.
 - **Acción:** Revisar la lógica y **confirmar** si efectivamente es así; reportar el hallazgo antes de hacer cualquier cambio.
 - **Resuelto:** confirmado que consolida por emisor (correcto, 2.949 USD MM rk#2); el nemo mostrado era `MIN()` alfabético (SQM-A). Al reescribir `f_sec05_top40` para la migración a SQL vivo se aplicó el fix: el nemo mostrado es el de **mayor monto** de la compañía (SQM-B, ~98%).
+- **Refinado (revisión 2026-07-01 bis):** el argmax inicial tomaba la fila individual (nemo×AFP) más grande, no la serie agregada — Andina mostraba ANDINA-A (185 USD MM) en vez de ANDINA-B (204). Migration `sec05_top40_argmax_per_series_total`: agrega por serie antes del argmax. Verificado: los 2 únicos emisores multi-serie del Top 40 (SOQUIMICH → SQM-B, EMBOTELLADORA ANDINA → ANDINA-B) muestran la serie dominante.
 
 ---
 
