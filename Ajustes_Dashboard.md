@@ -141,9 +141,10 @@ Dashboard de BI para análisis de datos de **AFPs** (fondos de pensiones). Módu
 - **Esperado:** Asignar a cada AFP su **color** propio y mantenerlo consistente en todo el dashboard.
 - **Implementado:** `AFP_COLORS` + `afpColor()` en `web/lib/dimensions.ts` — fuente única (8 AFPs, hue oklch fijo por AFP; BANSANDER legacy en gris). Verificado por barrido: los 3 stacked areas por AFP del home (Total/NAV/Uncalled by AFP), Contributors de market-share y Total Evolution leen de la paleta canónica; ningún gráfico por-AFP colorea por posición. Los gráficos donde el color codifica otra cosa (categorías C1, clases de activo, heatmaps OW/UW) usan sus propias paletas, como corresponde.
 
-### 6.2 — Color consistente por clase de activo
+### 6.2 — Color consistente por clase de activo ✅ (verificado + remapeo C1 2026-07-01)
 - **Tipo:** Mejora · **Prioridad:** Baja
 - **Esperado:** Aplicar el mismo criterio de color consistente por clase de activo.
+- **Implementado:** `ASSET_CLASS_COLORS` en `web/lib/dimensions.ts` (Equity azul · FI naranja · DI verde · PE violeta · Other slate; variantes Local profundo / Foreign claro) — consumido por Asset Allocation (3 cortes over-time) y Foreign (evolution + Latam). La revisión encontró una colisión residual en el home Alternatives: la taxonomía C1 vestía a Private Equity de azul y a Other Alternative del violeta-305 (el color-concepto de PE en Foreign). Remapeado `C1_COLORS`: PE → violeta canónico, Other Alternative → cian (200); `nav-by-afp-c1-chart` ahora lee de `C1_COLORS` (fuente única) y las `--chart-1..5` quedaron documentadas como paleta genérica secuencial. Vehicle type, región, GICS y heatmaps mantienen paletas propias a propósito.
 
 ---
 

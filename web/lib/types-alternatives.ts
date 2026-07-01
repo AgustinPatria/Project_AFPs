@@ -56,19 +56,21 @@ export type AfpDetailSeries = {
 // so existing Alternatives imports keep working; covers all 8 AFPs (the alts
 // charts only ever index the 7 ALT_AFPS, the extra BANSANDER key is harmless).
 export { AFP_COLORS } from './dimensions';
+import { ASSET_CLASS_COLORS } from './dimensions';
 
 // Canonical per-C1 (alternatives) asset-class colors — single source (task 6.2:
-// consistent color per asset class). These mirror the semantic --chart-N CSS
-// vars defined in globals.css, so every chart that colors C1 classes stays in
-// sync and theme-aware: the by-category & AFP-detail charts (which read this
-// map) and nav-by-afp-c1-chart (which reads the vars directly) now match.
-//   --chart-1 PE blue · --chart-2 PD orange · --chart-3 RA green
-//   --chart-4 Other purple · --chart-5 Local slate
+// consistent color per asset class). Concepts shared with other modules reuse
+// the canonical ASSET_CLASS_COLORS hue: Private Equity is the SAME violet the
+// Foreign module uses (a user who learns violet=PE there must see it here too),
+// and Private Debt stays in the credit/fixed-income orange family. Other
+// Alternative moved OFF violet-305 (it used to wear PE's concept color) to a
+// free cyan. Real Asset keeps green — it never shares a legend with Direct
+// Investment. Local = slate.
 export const C1_COLORS: Record<string, string> = {
-  'Private Equity': 'var(--chart-1)',
+  'Private Equity': ASSET_CLASS_COLORS.private_equity,
   'Private Debt': 'var(--chart-2)',
   'Real Asset': 'var(--chart-3)',
-  'Other Alternative': 'var(--chart-4)',
+  'Other Alternative': 'oklch(0.72 0.13 200)',
   Local: 'var(--chart-5)',
 };
 

@@ -10,6 +10,7 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { C1_CATEGORIES, type AfpC1Row, type C1Name } from '@/lib/dimensions';
+import { C1_COLORS } from '@/lib/types-alternatives';
 
 const C1_TO_SLUG: Record<C1Name, string> = {
   'Private Equity': 'pe',
@@ -19,13 +20,14 @@ const C1_TO_SLUG: Record<C1Name, string> = {
   Local: 'local',
 };
 
-const CHART_CONFIG = {
-  pe: { label: 'Private Equity', color: 'var(--chart-1)' },
-  pd: { label: 'Private Debt', color: 'var(--chart-2)' },
-  ra: { label: 'Real Asset', color: 'var(--chart-3)' },
-  oa: { label: 'Other Alternative', color: 'var(--chart-4)' },
-  local: { label: 'Local', color: 'var(--chart-5)' },
-} satisfies ChartConfig;
+// Colors come from the canonical C1_COLORS map (task 6.2) so this chart always
+// matches the by-category stacked areas and the Foreign module's concept hues.
+const CHART_CONFIG = Object.fromEntries(
+  C1_CATEGORIES.map((c1) => [
+    C1_TO_SLUG[c1],
+    { label: c1, color: C1_COLORS[c1] },
+  ]),
+) satisfies ChartConfig;
 
 export function NavByAfpC1Chart({ data }: { data: AfpC1Row[] }) {
   const chartData = data.map((row) => {

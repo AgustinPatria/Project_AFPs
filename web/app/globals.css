@@ -70,11 +70,13 @@
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.55 0.18 250);  /* Private Equity — blue */
-  --chart-2: oklch(0.68 0.16 50);   /* Private Debt — orange */
-  --chart-3: oklch(0.62 0.14 160);  /* Real Asset — green */
-  --chart-4: oklch(0.55 0.18 305);  /* Other Alternative — purple */
-  --chart-5: oklch(0.72 0.03 220);  /* Local — slate */
+  /* Generic sequential chart palette (quarters, misc series). Concept colors
+     (asset classes, C1, AFPs) live in web/lib/dimensions.ts / types-alternatives. */
+  --chart-1: oklch(0.55 0.18 250);  /* blue */
+  --chart-2: oklch(0.68 0.16 50);   /* orange */
+  --chart-3: oklch(0.62 0.14 160);  /* green */
+  --chart-4: oklch(0.55 0.18 305);  /* purple */
+  --chart-5: oklch(0.72 0.03 220);  /* slate */
   --brand: oklch(0.55 0.20 258);    /* Patria corporate indigo-blue */
   --brand-foreground: oklch(0.985 0 0);
   --chart-grid: oklch(0 0 0 / 12%);
