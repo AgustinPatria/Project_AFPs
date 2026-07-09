@@ -18,7 +18,7 @@ ORIGEN                         SQL SERVER / EXCEL / SCRAPE        SUPABASE (tabl
 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 TBL_SPE_HISTORIAL_CARTERAS ──► (pilot_sync_full.py) ───────────► historial_carteras_full ─► v_chist_aa, v_chilean_…   ─► page.tsx
 spensiones.cl (XML)        ──► AFP_CL_SP_* (sync_sp_xml.py) ───► sp_fila/sp_valor_* ──────► v_sp_* ───────────────────► foreign/…
-spensiones.cl (HTML)       ──► AFP_CL_SP_Cotizantes ──────────► cotizantes_afp ──────────► v_contributors_…  ─────────► market-share
+Equipo (carga a SQL)       ──► AFP_CL_Cotizantes ─────────────► cotizantes_afp ──────────► v_contributors_…  ─────────► market-share
 Excel 11_Flows03.xlsm      ──► AFP_CL_BBG_Returns_Foreign ────► bbg_returns_foreign ─────► v_foreign_returns_flows ───► foreign
 DW_MONEDA TBL_RENTABILIDADES─► (sync_sqlserver…) ─────────────► tipo_cambio ─────────────► (casi todas) ──────────────► (todas)
 Inteligencia_Producto_Dev  ──► (sync_inteligencia_producto) ──► ipd_positions, dim_ipd_* ► v_chilean_stocks_* ────────► chilean-stocks
@@ -185,7 +185,7 @@ flowchart LR
 | Vista | Cadena | Tablas base | Origen |
 |---|---|---|---|
 | `v_returns_afp_tipo` | → `mv_returns_afp_tipo` → `v_cuota_month_end` + `v_daily_flows` | `valores_cuota_patrimonio`, `tipo_cambio` | `TBL_SPE_VALORESCUOTAPATRIMONIO` + FX **(matview — se refresca)** |
-| `v_contributors_market_share` | → `cotizantes_afp` + `v_returns_afp_tipo` | `cotizantes_afp` (+ las de arriba) | scrape `spensiones.cl` HTML → `AFP_CL_SP_Cotizantes` |
+| `v_contributors_market_share` | → `cotizantes_afp` + `v_returns_afp_tipo` | `cotizantes_afp` (+ las de arriba) | `AFP_CL_Cotizantes` (mantenida por el equipo; antes scrape → `AFP_CL_SP_Cotizantes`, retirado 2026-07) |
 
 ### Foreign — `web/app/foreign/page.tsx`
 `queries-foreign.ts`, `queries-foreign-di.ts`, `queries-foreign-evolution.ts`, `queries-foreign-latam.ts`
@@ -253,7 +253,7 @@ Esta sección **combina dos fuentes** (CHIST + SP XML) por diseño.
 | `valores_cuota_patrimonio` | `sync_sqlserver_to_supabase.py` | `TBL_SPE_VALORESCUOTAPATRIMONIO` | UPSERT `(fecha, multifondo, afp)` |
 | `tipo_cambio` | `sync_sqlserver_to_supabase.py` | `DW_MONEDA.TBL_RENTABILIDADES_DW` (`CLFXDOOB_sindesf`, `USDCLP Curncy`) | UPSERT `(fecha, instrumento_codigo)` |
 | `sp_fila`, `sp_valor_fondo`, `sp_valor_afp`, `sp_valor_instrumento` | `sync_sp_sqlserver_to_supabase.py` ← `sync_sp_xml.py` | `AFP_CL_SP_*` ← scrape XML `spensiones.cl` | mirror 1:1 (≥2025-01), `fila_id` preservado |
-| `cotizantes_afp` | `sync_sp_sqlserver_to_supabase.py` ← `sync_sp_cotizantes.py` | `AFP_CL_SP_Cotizantes` ← scrape HTML `spensiones.cl` | DELETE ventana + INSERT |
+| `cotizantes_afp` | `sync_sp_sqlserver_to_supabase.py` | `AFP_CL_Cotizantes` (mantenida por el equipo; antes `AFP_CL_SP_Cotizantes` ← scrape, retirado 2026-07) | DELETE ventana + INSERT |
 | `sd_asset_class_tipo` | `sync_sd_asset_class.py` | `AFP_CL_01_sd` (SQL Server) | DELETE por `fecha` + INSERT |
 | `sd_asset_class_afp` | `sync_sd_asset_class.py` | `AFP_CL_02_sd` (SQL Server) | DELETE por `fecha` + INSERT |
 | `bbg_returns_foreign` | `sync_bbg_returns_to_supabase.py` ← `extract_bbg_returns.py` | `AFP_CL_BBG_Returns_Foreign` ← Excel `11_Flows03.xlsm` hoja Rentab | UPSERT `(fecha, nemo)` |

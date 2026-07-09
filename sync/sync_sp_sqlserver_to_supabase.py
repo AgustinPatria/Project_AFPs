@@ -26,7 +26,16 @@ TABLAS Y ESTRATEGIA
   AFP_CL_SP_Valor_Fondo       -> sp_valor_fondo
   AFP_CL_SP_Valor_AFP         -> sp_valor_afp
   AFP_CL_SP_Valor_Instrumento -> sp_valor_instrumento
-  AFP_CL_SP_Cotizantes        -> cotizantes_afp        (DELETE WHERE fecha >= window + INSERT todo)
+  AFP_CL_Cotizantes           -> cotizantes_afp        (DELETE WHERE fecha >= window + INSERT todo)
+
+FUENTE DE COTIZANTES (cambio 2026-07-09)
+========================================
+Los scrapers de spensiones.cl quedaron retirados; cotizantes se lee ahora de
+dbo.AFP_CL_Cotizantes (mantenida por el equipo, historia desde 2002, columnas
+Fecha/AFP/Numero_Cotizantes) en vez de AFP_CL_SP_Cotizantes (la tabla del
+scraper, congelada en 2026-03). Se validó paridad exacta en los meses
+solapados 2025+. Las AFPs extintas pre-2009 (BANSANDER, MAGISTER, etc.) quedan
+fuera por el filtro de ventana >= 2025-01-01.
 
 IDs PRESERVADOS
 ===============
@@ -331,10 +340,12 @@ def sync_cotizantes(engine, client: Client) -> int:
     with engine.connect() as conn:
         df = pd.read_sql_query(
             text(f"""
-                SELECT fecha, afp, n_cotizantes
-                FROM dbo.AFP_CL_SP_Cotizantes
-                WHERE fecha >= '{WINDOW_START_FECHA}'
-                ORDER BY fecha, afp
+                SELECT Fecha               AS fecha,
+                       AFP                 AS afp,
+                       Numero_Cotizantes   AS n_cotizantes
+                FROM dbo.AFP_CL_Cotizantes
+                WHERE Fecha >= '{WINDOW_START_FECHA}'
+                ORDER BY Fecha, AFP
             """),
             conn,
         )

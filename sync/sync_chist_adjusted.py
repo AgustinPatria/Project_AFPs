@@ -11,8 +11,16 @@ Columnas forward/swap no se traen. Idempotente: DELETE por fecha en el pull + IN
 
 Requiere que la tabla destino exista (ver chist_adjusted_schema.sql).
 
+VENTANA AUTO-ANCLADA A LA FUENTE (2026-07-09): CHIST llega con ~4 meses de
+rezago, asi que una ventana relativa a "hoy" (como la de los demas syncs)
+puede quedar POR DELANTE del ultimo dato y cargar 0 filas. Sin --start, este
+script ancla la ventana al MAX(fecha) de la propia fuente: re-sincroniza los
+ultimos 3 meses PUBLICADOS (mes nuevo + correcciones retroactivas de la SPE).
+Asi main.py puede correrlo siempre: si no hay mes nuevo re-copia lo mismo
+(idempotente); si aparece, lo toma solo.
+
 Uso:
-    python sync/sync_chist_adjusted.py                 # ventana default 2025-01-01
+    python sync/sync_chist_adjusted.py                 # ventana auto (3 meses publicados)
     python sync/sync_chist_adjusted.py --start 2026-01-01
     python sync/sync_chist_adjusted.py --dry-run
 """
@@ -21,6 +29,7 @@ import sys
 import argparse
 
 from dotenv import load_dotenv
+from sqlalchemy import text
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sync_sqlserver_to_supabase import (  # noqa: E402
@@ -63,15 +72,41 @@ def build_query(start):
     """
 
 
+def resolve_start(eng, arg_start):
+    """--start explicito manda; si no, ventana anclada al MAX(fecha) de la
+    fuente: primer dia del mes, 2 meses antes -> re-sync de los ultimos 3
+    meses publicados (cubre mes nuevo + correcciones retroactivas)."""
+    if arg_start:
+        return arg_start
+    with eng.connect() as conn:
+        max_f = conn.execute(
+            text(f"SELECT MAX(CAST(fecha AS DATE)) FROM Inteligencia_Mercado.dbo.{SRC_TABLE}")
+        ).scalar()
+    if max_f is None:
+        return WINDOW
+    # pyodbc puede devolver DATE como str segun driver/version
+    if isinstance(max_f, str):
+        from datetime import date
+        max_f = date.fromisoformat(max_f[:10])
+    y, m = max_f.year, max_f.month - 2
+    if m <= 0:
+        y, m = y - 1, m + 12
+    start = f"{y:04d}-{m:02d}-01"
+    print(f"      ventana auto: MAX(fecha) fuente = {max_f} -> start {start} (3 meses publicados)")
+    return start
+
+
 def main():
     ap = argparse.ArgumentParser(description="Sync AFP_CL_CHIST_ADJUSTED -> Supabase chist_adjusted")
-    ap.add_argument('--start', default=WINDOW, help=f'Inicio YYYY-MM-DD por fecha (default {WINDOW})')
+    ap.add_argument('--start', default=None,
+                    help='Inicio YYYY-MM-DD por fecha (default: auto, ultimos 3 meses publicados en la fuente)')
     ap.add_argument('--dry-run', action='store_true', help='Solo lee de SQL y reporta; no escribe en Supabase')
     args = ap.parse_args()
 
     eng = connect_sqlserver()
-    print(f"\n[chist_adjusted] {DST_TABLE} <- {SRC_TABLE}  [fecha >= {args.start}, sin derivados/RF-nac/disp-nac]")
-    df = timed_read(DST_TABLE, eng, build_query(args.start))
+    start = resolve_start(eng, args.start)
+    print(f"\n[chist_adjusted] {DST_TABLE} <- {SRC_TABLE}  [fecha >= {start}, sin derivados/RF-nac/disp-nac]")
+    df = timed_read(DST_TABLE, eng, build_query(start))
     if df.empty:
         print("      -> 0 filas (nada en el rango)")
         return
