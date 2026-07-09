@@ -79,7 +79,16 @@ en algunas redes y falla silenciosamente en la corporativa.
 |---|---|---|
 | Usuario SQL Server (`DB_UID`/`DB_PWD` en `.env`) | Leer `Inteligencia_Mercado` (todas las tablas fuente `AFP_CL_*`, `TBL_IPA_V2`, dims) | Verificar si la cuenta del `.env` heredado sigue vigente; si era personal del dueño anterior, pedir una propia a TI |
 | **Login al dashboard web de Supabase** (cuenta en la organización, proyecto activo: ProjectAFP_v2) | Reactivar el proyecto cuando se auto-pausa, editar vistas, SQL editor | Que el dueño anterior te invite a la organización de Supabase |
-| Cuenta/proyecto de **Vercel** | Deploy del frontend `web/` | Invitación al proyecto de Vercel (no se necesita para la corrida mensual de datos) |
+| Cuenta/proyecto de **Vercel** | Deploy del frontend `web/` | Acceso al team de Vercel donde vive el proyecto (no se necesita para la corrida mensual de datos) |
+
+> **Si hay que re-importar el proyecto en Vercel** (cambio de cuenta, nuevo
+> team): Import desde GitHub con **Root Directory = `web/`** (¡no la raíz!) y
+> las **TRES** environment variables de `web/.env.local`:
+> `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` y
+> `SUPABASE_SERVICE_ROLE_KEY`. Si falta la anon key, todo el sitio responde
+> "Internal Server Error" (la usa el middleware de auth en cada request).
+> Tras agregar/cambiar variables hay que hacer **Redeploy** — no aplican al
+> deploy ya hecho.
 
 > **Importante — auto-pausa de Supabase**: el proyecto está en free tier y se
 > **pausa solo tras ~1 semana sin actividad**. Si la corrida mensual falla con
