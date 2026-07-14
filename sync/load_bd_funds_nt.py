@@ -1,5 +1,12 @@
 """Carga la nueva taxonomia de BD_Funds.xlsx en dim_bd_funds (columnas nt_*).
 
+RETIRADO 2026-07-14 — ya no hace falta. Las columnas nt_* se traen ahora
+directo de SQL Server (`DIM_BD_FUNDS_2_INTMDO.New_*`) dentro de
+`sync_dim_bd_funds()` en `sync_sqlserver_to_supabase.py`. Verificado: New_*
+poblado 100% (5.149 filas), reconcilia 99,0% con lo que cargaba este script y
+ademas rellena 559 fondos que el Excel dejaba en NULL. `BD_Funds.xlsx` deja de
+ser una fuente del pipeline. Se conserva este script solo como referencia.
+
 BD_Funds.xlsx solo identifica fondos por nombre + manager; dim_bd_funds usa
 `id`. Este script une por nombre normalizado (con manager como desempate),
 backfillea el `id`, y hace UPSERT de las 5 columnas nt_* via la REST API de

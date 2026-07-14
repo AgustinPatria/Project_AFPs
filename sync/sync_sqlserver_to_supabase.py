@@ -241,6 +241,12 @@ def sync_dim_tipo_instrumento_filtro(ms_engine, client, args):
 def sync_dim_bd_funds(ms_engine, client, args):
     # Sin filtro Asset_Class: traemos universo completo (~4,972 filas).
     # Para el dashboard hacen falta tambien los non-alt (Equity, Fixed Income, etc.)
+    #
+    # 2026-07-14: las columnas nt_* (nueva taxonomia) se traen ahora de
+    # DIM_BD_FUNDS_2_INTMDO.New_* en vez del Excel BD_Funds.xlsx. Verificado:
+    # New_* poblado 100% (5.149 filas); reconcilia 99,0% con lo cargado por
+    # load_bd_funds_nt.py y rellena 559 fondos que el Excel dejaba en NULL.
+    # -> load_bd_funds_nt.py + BD_Funds.xlsx quedan retirados (ver su docstring).
     print("[dim] dim_bd_funds (universo completo)")
     query = """
         SELECT
@@ -248,7 +254,13 @@ def sync_dim_bd_funds(ms_engine, client, args):
             [Manager] AS manager, [Type] AS type, [Style] AS style,
             [Asset_Class] AS asset_class, [Category] AS category,
             [Region] AS region, [Alt_Fund_Type] AS alt_fund_type,
-            [Alt_Strategy] AS alt_strategy
+            [Alt_Strategy] AS alt_strategy,
+            [New_Asset_Class] AS nt_asset_class,
+            [New_Sub_Asset_Class] AS nt_sub_asset_class,
+            [New_Category] AS nt_category,
+            [New_Sub_Category] AS nt_sub_category,
+            [New_Region] AS nt_region,
+            [Distributor] AS distributor
         FROM Inteligencia_Mercado.dbo.DIM_BD_FUNDS_2_INTMDO
     """
     df = timed_read('dim_bd_funds', ms_engine, query)

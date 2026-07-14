@@ -2,7 +2,6 @@ import { Users } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import { AsOfBadge } from '@/components/as-of-badge';
 import { Disclaimer } from '@/components/disclaimer';
-import { NotFromSql } from '@/components/not-from-sql';
 import { DistributorsSec09Table } from '@/components/distributors/sec09-table';
 import {
   distributorBaselines,
@@ -71,11 +70,11 @@ export default async function Page({
         <Disclaimer variant="foreign-lag">
           Analysis includes only foreign investments.
         </Disclaimer>
-        {/* Montos desde SQL (consolidated_sd), pero la dimensión que organiza la tabla
-            —el mapeo manager→distribuidor— es manual (pendiente #6). Ver lineage. */}
-        <NotFromSql reason="Montos desde SQL (consolidated_sd), pero el mapeo manager→distribuidor es manual (dim_distributor_by_manager + overlay). Aún no en SQL fuente única (pendiente #6).">
-          <DistributorsSec09Table rows={rows} fechas={resolved} />
-        </NotFromSql>
+        {/* Migrado a SQL fuente única (2026-07-14): distribuidor + manager desde
+            dim_bd_funds.distributor (DIM_BD_FUNDS_2_INTMDO.Distributor, distribuidor
+            local), vía join ISIN→dim_homol_funds→dim_bd_funds; montos de
+            consolidated_sd. [Direct Investment] preservado vía dim_direct_investment_overlay. */}
+        <DistributorsSec09Table rows={rows} fechas={resolved} />
       </div>
     </main>
   );
